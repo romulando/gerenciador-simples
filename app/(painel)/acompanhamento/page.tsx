@@ -1,9 +1,12 @@
 import Link from 'next/link';
 import { Activity, ArrowRight, CheckCircle2, PauseCircle } from 'lucide-react';
 import { listarPedidos } from '@/lib/data';
+import { getDb } from '@/lib/db';
+import { listarContasPedidos } from '@/lib/pedidoContas';
 import { formatarMoeda, TIPOS_SERVICO } from '@/lib/helpers';
 import { percentual, textoQuantidade, valorPedido } from '@/lib/resumo';
 import Progresso from '@/components/pedidos/Progresso';
+import AvisoSemConta from '@/components/pedidos/AvisoSemConta';
 import Alerta from '@/components/ui/Alerta';
 
 export const dynamic = 'force-dynamic';
@@ -20,6 +23,13 @@ export default async function AcompanhamentoPage() {
   const ativos = pedidos.filter((p) => p.estado === 'em_andamento');
   const pausados = pedidos.filter((p) => p.estado === 'pausado');
   const concluidos = pedidos.filter((p) => p.estado === 'concluido');
+
+  const contasPorTracking = new Map(
+    listarContasPedidos(getDb()).map((conta) => [conta.trackingId, conta.accountId])
+  );
+  const pedidosSemConta = ativos
+    .filter((p) => !contasPorTracking.get(String(p.tracking_id ?? '').toUpperCase()))
+    .map((p) => ({ trackingId: p.tracking_id, tipoServico: p.tipo_servico }));
 
   const grupos = [
     { titulo: 'Em andamento', lista: ativos, Icon: Activity, cor: 'text-blue-300' },
@@ -40,6 +50,8 @@ export default async function AcompanhamentoPage() {
       </div>
 
       {erro && <Alerta tipo="erro">{erro}</Alerta>}
+
+      <AvisoSemConta pedidos={pedidosSemConta} />
 
       {grupos.map((grupo) => {
         const Icon = grupo.Icon;
@@ -71,6 +83,12 @@ export default async function AcompanhamentoPage() {
                           {TIPOS_SERVICO[p.tipo_servico] ?? p.tipo_servico}
                         </p>
                         <p className="mt-1 text-xs text-gray-400">{textoQuantidade(p)}</p>
+                        {contasPorTracking.get(String(p.tracking_id ?? '').toUpperCase()) && (
+                          <p className="mt-1 text-[11px] text-emerald-300/80">
+                            Conta Dota 2:{' '}
+                            {contasPorTracking.get(String(p.tracking_id ?? '').toUpperCase())}
+                          </p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-medium text-emerald-300">

@@ -19,8 +19,14 @@ import ConfigOverlayModal from '@/components/stream-overlay/ConfigOverlayModal';
 import ControleCenas from '@/components/stream-overlay/ControleCenas';
 import ControleTransicaoFogo from '@/components/stream-overlay/ControleTransicaoFogo';
 import GsiConfig from '@/components/stream-overlay/GsiConfig';
+import AvisoSemConta from '@/components/pedidos/AvisoSemConta';
+import AdicionarIdContaModal from '@/components/pedidos/AdicionarIdContaModal';
 import { CANVAS_ALTURA, CANVAS_LARGURA } from '@/components/stream-overlay/common';
-import type { EstadoCena, RespostaPainelOverlay } from '@/components/stream-overlay/common';
+import type {
+  ContaPedidoOverlay,
+  EstadoCena,
+  RespostaPainelOverlay,
+} from '@/components/stream-overlay/common';
 import { TIPOS_SERVICO } from '@/lib/helpers';
 import type { PedidoTheone } from '@/lib/types';
 
@@ -52,7 +58,9 @@ function Campo({ rotulo, valor, destaque }: { rotulo: string; valor: string; des
 export default function StreamOverlayPage() {
   const [painel, setPainel] = useState<RespostaPainelOverlay | null>(null);
   const [pedidos, setPedidos] = useState<PedidoTheone[]>([]);
+  const [contas, setContas] = useState<ContaPedidoOverlay[]>([]);
   const [selecionado, setSelecionado] = useState('');
+  const [contaEditando, setContaEditando] = useState(false);
   const [erro, setErro] = useState('');
   const [avisoTwitch, setAvisoTwitch] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(
     null
@@ -96,6 +104,7 @@ export default function StreamOverlayPage() {
     ]);
     setPainel(data);
     setPedidos(lista.pedidos ?? []);
+    setContas(data.contas ?? []);
     const atual = data.pedidoSelecionado ?? '';
     setSelecionado(atual);
 
@@ -178,6 +187,12 @@ export default function StreamOverlayPage() {
     Math.min(100, Number(pedidoCompleto?.progresso_pct ?? 0) || 0)
   );
 
+  const contasPorTracking = new Map(contas.map((conta) => [conta.trackingId, conta.accountId]));
+  const pedidosSemConta = pedidos
+    .filter((p) => p.estado === 'em_andamento')
+    .filter((p) => !contasPorTracking.get(String(p.tracking_id ?? '').toUpperCase()))
+    .map((p) => ({ trackingId: p.tracking_id, tipoServico: p.tipo_servico }));
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -217,6 +232,8 @@ export default function StreamOverlayPage() {
 
       {erro && <Alerta tipo="erro">{erro}</Alerta>}
       {avisoTwitch && <Alerta tipo={avisoTwitch.tipo}>{avisoTwitch.texto}</Alerta>}
+
+      <AvisoSemConta pedidos={pedidosSemConta} onSalvo={carregar} />
 
       <GsiConfig />
 
@@ -326,6 +343,17 @@ export default function StreamOverlayPage() {
                     valor={pedido.mmrFinal != null ? String(pedido.mmrFinal) : '—'}
                   />
                   <Campo rotulo="Medalha" valor={pedido.medalhaAtual?.nome ?? '—'} />
+                  <Campo rotulo="Conta do pedido" valor={pedido.contaDota ?? '—'} />
+                </div>
+
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setContaEditando(true)}
+                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-medium text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    {pedido.contaDota ? 'Editar ID do Dota 2' : 'Adicionar ID do Dota 2'}
+                  </button>
                 </div>
 
                 <div className="mt-4">
@@ -398,6 +426,18 @@ export default function StreamOverlayPage() {
           urlOverlay={urlOverlay}
           onFechar={() => setConfigAberto(false)}
           onSalvar={salvarConfig}
+        />
+      )}
+
+      {contaEditando && pedido?.trackingId && (
+        <AdicionarIdContaModal
+          trackingId={pedido.trackingId}
+          contaAtual={pedido.contaDota}
+          onFechar={() => setContaEditando(false)}
+          onSalvo={async () => {
+            setContaEditando(false);
+            await carregar();
+          }}
         />
       )}
     </div>

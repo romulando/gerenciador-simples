@@ -35,6 +35,7 @@ export interface PedidoOverlay {
   id: number;
   trackingId: string | null;
   tipoServico: string;
+  contaDota: string | null;
   mmrInicial: number | null;
   mmrAtual: number | null;
   mmrFinal: number | null;
@@ -231,12 +232,19 @@ export interface EventoOverlay {
   clienteNome?: string | null;
 }
 
+export interface ContaPedidoOverlay {
+  trackingId: string;
+  accountId: string;
+  atualizadoEm: string;
+}
+
 export interface RespostaPainelOverlay {
   dados: DadosOverlay;
   limiteWins: number;
   modoBoost: boolean;
   token: string;
   pedidoSelecionado?: string;
+  contas?: ContaPedidoOverlay[];
   eventos: EventoOverlay[];
 }
 

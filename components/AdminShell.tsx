@@ -12,6 +12,7 @@ import {
   MonitorPlay,
   X,
 } from 'lucide-react';
+import { ConfirmarProvider } from '@/components/ui/Confirmar';
 
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -66,7 +67,8 @@ export default function AdminShell({
   );
 
   return (
-    <div className="relative min-h-screen">
+    <ConfirmarProvider>
+      <div className="relative min-h-screen">
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
         <div className="absolute -top-[10%] left-[10%] h-[40rem] w-[40rem] rounded-full bg-[#e8a020]/10 blur-[160px]" />
         <div className="absolute -bottom-[10%] right-[5%] h-[35rem] w-[35rem] rounded-full bg-indigo-700/10 blur-[150px]" />
@@ -146,6 +148,7 @@ export default function AdminShell({
           <main className="flex-1 overflow-x-auto p-4 md:p-6">{children}</main>
         </div>
       </div>
-    </div>
+      </div>
+    </ConfirmarProvider>
   );
 }

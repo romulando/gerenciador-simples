@@ -40,6 +40,10 @@ import {
 import { nomeMesAtual, obterTotalMesLivepix } from './livepix';
 import { resolverEstadoAtual } from './obsCenas';
 import { obterContagemSubs } from './twitch';
+import { getPedidoSelecionado, setPedidoSelecionado } from './pedidoSelecionado';
+import { getContaPedido } from './pedidoContas';
+
+export { getPedidoSelecionado, setPedidoSelecionado };
 
 export {
   OVERLAY_SUB_META_MAX,
@@ -580,18 +584,6 @@ export function contarWinsUltimas(
 
 // ─── Pedido exibido na overlay (selecionado no painel) ────────────────────
 
-const CHAVE_PEDIDO_SELECIONADO = 'overlay_pedido_selecionado';
-
-export function getPedidoSelecionado(db: Database.Database): string {
-  return (getConfigValor(db, CHAVE_PEDIDO_SELECIONADO) ?? '').trim().toUpperCase();
-}
-
-export function setPedidoSelecionado(db: Database.Database, trackingId: unknown): string {
-  const id = String(trackingId ?? '').trim().toUpperCase();
-  setConfigValor(db, CHAVE_PEDIDO_SELECIONADO, /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(id) ? id : '');
-  return id;
-}
-
 export async function pedidoDoOverlay(
   db: Database.Database
 ): Promise<PedidoOverlayResumo | null> {
@@ -610,6 +602,7 @@ export interface DadosOverlay {
     id: number;
     trackingId: string | null;
     tipoServico: string;
+    contaDota: string | null;
     mmrInicial: number | null;
     mmrAtual: number | null;
     mmrFinal: number | null;
@@ -645,7 +638,9 @@ export async function dadosOverlay(
   const gsi = getEstadoGsi();
   const pedido = await pedidoDoOverlay(db);
   const limite = getOverlayWinsLimite(db);
-  const contagem = contarWinsUltimas(db, limite, gsi.accountId ?? '');
+  const contaPedido = pedido?.trackingId ? getContaPedido(db, pedido.trackingId) : '';
+  // Sem conta detectada no GSI, usa a conta vinculada ao pedido em exibição.
+  const contagem = contarWinsUltimas(db, limite, gsi.accountId || contaPedido || '');
   // Sem partidas locais do GSI, usa o W/L publicado no tracking.
   const wins = contagem.total > 0 ? contagem.wins : pedido?.vitorias ?? 0;
   const losses = contagem.total > 0 ? contagem.losses : pedido?.derrotas ?? 0;
@@ -671,6 +666,7 @@ export async function dadosOverlay(
           id: pedido.id,
           trackingId: pedido.trackingId,
           tipoServico: pedido.tipoServico,
+          contaDota: contaPedido || null,
           mmrInicial: pedido.mmrInicial,
           mmrAtual: pedido.mmrAtual,
           mmrFinal: pedido.mmrFinal,

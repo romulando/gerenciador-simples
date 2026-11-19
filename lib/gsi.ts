@@ -6,6 +6,9 @@ import { getDb } from './db';
 import { agoraLocal } from './helpers';
 import { registrarEventoOverlay } from './overlayEventos';
 import { aoEstadoGsi } from './obsCenas';
+import { accountIdDeSteamId } from './contaDota';
+import { getPedidoSelecionado } from './pedidoSelecionado';
+import { pedidoDaPartida } from './pedidoContas';
 
 export interface PayloadGsi {
   map?: Record<string, unknown>;
@@ -147,22 +150,11 @@ export function getEstadoGsi(): EstadoGsi {
   };
 }
 
-function accountIdDeSteamId(steamId: unknown): string {
-  const bruto = String(steamId ?? '').trim();
-  if (!/^\d+$/.test(bruto)) return '';
-  try {
-    const base = BigInt('76561197960265728');
-    const id = BigInt(bruto) - base;
-    return id > BigInt(0) ? id.toString() : '';
-  } catch {
-    return '';
-  }
-}
-
 interface DadosPartida {
   matchId: string | null;
   accountId?: string;
   steamId?: string;
+  trackingId?: string;
   hero?: string;
   resultado: string;
   kills?: number;
@@ -180,21 +172,32 @@ function salvarPartida(
 ): { id: number; matchId: string | null; resultado: string; hero: string; nova: boolean } {
   const matchId = dados.matchId ? String(dados.matchId) : null;
   if (matchId) {
-    const existente = db.prepare('SELECT id, matchId, resultado, hero FROM partidas WHERE matchId = ?').get(matchId) as
-      | { id: number; matchId: string | null; resultado: string; hero: string }
+    const existente = db
+      .prepare('SELECT id, matchId, resultado, hero, trackingId FROM partidas WHERE matchId = ?')
+      .get(matchId) as
+      | { id: number; matchId: string | null; resultado: string; hero: string; trackingId: string | null }
       | undefined;
-    if (existente) return { ...existente, nova: false };
+    if (existente) {
+      // Partida salva antes de a conta ser vinculada: aproveita o vínculo novo.
+      const trackingNovo = String(dados.trackingId ?? '').trim().toUpperCase();
+      if (trackingNovo && !existente.trackingId) {
+        db.prepare('UPDATE partidas SET trackingId = ? WHERE id = ?').run(trackingNovo, existente.id);
+        existente.trackingId = trackingNovo;
+      }
+      return { ...existente, nova: false };
+    }
   }
   const info = db
     .prepare(
       `INSERT INTO partidas
-        (matchId, accountId, steamId, hero, resultado, kills, deaths, assists, duracao, iniciadaEm, finalizadaEm, fonte)
-       VALUES (@matchId, @accountId, @steamId, @hero, @resultado, @kills, @deaths, @assists, @duracao, @iniciadaEm, @finalizadaEm, @fonte)`
+        (matchId, accountId, steamId, trackingId, hero, resultado, kills, deaths, assists, duracao, iniciadaEm, finalizadaEm, fonte)
+       VALUES (@matchId, @accountId, @steamId, @trackingId, @hero, @resultado, @kills, @deaths, @assists, @duracao, @iniciadaEm, @finalizadaEm, @fonte)`
     )
     .run({
       matchId,
       accountId: String(dados.accountId ?? ''),
       steamId: String(dados.steamId ?? ''),
+      trackingId: String(dados.trackingId ?? '').trim().toUpperCase(),
       hero: String(dados.hero ?? ''),
       resultado: dados.resultado === 'L' ? 'L' : 'W',
       kills: Number(dados.kills) || 0,
@@ -296,10 +299,13 @@ export function processarGsi(payload: PayloadGsi): void {
     if (matchIdValidoGsi(s.matchId) && winTeam && playerTeam && !s.partidaContada) {
       s.partidaContada = true;
       const resultado = winTeam === playerTeam ? 'W' : 'L';
+      // Atribui a partida ao pedido selecionado ou à única conta vinculada.
+      const trackingId = pedidoDaPartida(db, s.accountId, getPedidoSelecionado(db));
       const partida = salvarPartida(db, {
         matchId: s.matchId,
         accountId: s.accountId,
         steamId: s.steamId,
+        trackingId,
         hero: s.hero,
         resultado,
         kills: s.kills,
@@ -322,8 +328,14 @@ export function processarGsi(payload: PayloadGsi): void {
           'jogo_salvo',
           `Jogo salvo: ${resultado === 'W' ? 'Vitória' : 'Derrota'}${
             s.hero ? ` · ${s.hero}` : ''
-          }`,
-          { partidaId: partida.id, matchId: s.matchId, resultado, hero: s.hero }
+          }${trackingId ? ` · pedido ${trackingId}` : ' · sem vínculo'}`,
+          {
+            partidaId: partida.id,
+            matchId: s.matchId,
+            resultado,
+            hero: s.hero,
+            trackingId: trackingId || null,
+          }
         );
       }
     }

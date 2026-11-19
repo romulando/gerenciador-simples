@@ -25,6 +25,7 @@ export function getDb(): Database.Database {
       matchId TEXT,
       accountId TEXT DEFAULT '',
       steamId TEXT DEFAULT '',
+      trackingId TEXT NOT NULL DEFAULT '',
       hero TEXT DEFAULT '',
       resultado TEXT NOT NULL DEFAULT 'W',
       kills INTEGER NOT NULL DEFAULT 0,
@@ -39,6 +40,13 @@ export function getDb(): Database.Database {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_partidas_matchId ON partidas(matchId);
     CREATE INDEX IF NOT EXISTS idx_partidas_finalizadaEm ON partidas(finalizadaEm);
 
+    CREATE TABLE IF NOT EXISTS pedido_contas (
+      trackingId TEXT PRIMARY KEY,
+      accountId TEXT NOT NULL DEFAULT '',
+      atualizadoEm TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_pedido_contas_accountId ON pedido_contas(accountId);
+
     CREATE TABLE IF NOT EXISTS overlay_eventos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tipo TEXT NOT NULL DEFAULT '',
@@ -49,6 +57,13 @@ export function getDb(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_overlay_eventos_createdAt ON overlay_eventos(createdAt);
     CREATE INDEX IF NOT EXISTS idx_overlay_eventos_tipo ON overlay_eventos(tipo);
   `);
+
+  // Migração aditiva: bancos antigos ainda não têm a coluna de vínculo.
+  const colunasPartidas = db.prepare('PRAGMA table_info(partidas)').all() as { name: string }[];
+  if (!colunasPartidas.some((coluna) => coluna.name === 'trackingId')) {
+    db.exec("ALTER TABLE partidas ADD COLUMN trackingId TEXT NOT NULL DEFAULT ''");
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_partidas_trackingId ON partidas(trackingId)');
 
   globalForDb._overlayDb = db;
   return db;

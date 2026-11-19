@@ -8,6 +8,7 @@ import {
   getPedidoSelecionado,
 } from '@/lib/overlay';
 import { listarEventosOverlay } from '@/lib/overlayEventos';
+import { listarContasPedidos } from '@/lib/pedidoContas';
 
 // GET /api/overlay/painel -> dados da overlay + config + log de eventos.
 // Consumido pela página admin (com sessão).
@@ -20,6 +21,7 @@ export async function GET() {
       modoBoost: getOverlayModoBoost(db),
       token: getOverlayToken(db),
       pedidoSelecionado: getPedidoSelecionado(db),
+      contas: listarContasPedidos(db),
       eventos: listarEventosOverlay(db, 80),
     },
     { headers: { 'Cache-Control': 'no-store' } }
