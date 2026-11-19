@@ -29,13 +29,22 @@ O mesmo `THEONE_API_SECRET` precisa existir no `.env.local` do site
 
 ## 3. Instalar e rodar
 
-Pré-requisito: **Node.js 22.13 ou superior** (recomendado: 24 LTS). O banco local
-usa o `node:sqlite` embutido no Node, então não há dependência nativa para compilar.
+Pré-requisitos: **Node.js 22.13 ou superior** (recomendado: 24 LTS) e **Git**.
+O Git é usado pelo atalho para manter o app atualizado. O repositório é
+público, então não é preciso conta no GitHub.
+
+Em um computador novo:
 
 ```bash
+git clone https://github.com/romulando/gerenciador-simples.git
+cd gerenciador-simples
 npm install
 npm run dev
 ```
+
+Copie `.env.local.example` para `.env.local` e preencha as variáveis da seção 2.
+O banco local usa o `node:sqlite` embutido no Node, então não há dependência
+nativa para compilar.
 
 Acesse `http://localhost:4000` e entre com `Theone` (ou o e-mail) e a senha
 desse usuário no Supabase.
@@ -47,45 +56,77 @@ desse usuário no Supabase.
 
 Dá para abrir e fechar o painel com duplo clique, sem usar o terminal:
 
-- `abrir-gerenciador.bat`: confere se o Node.js está instalado, roda
-  `npm install` se as dependências estiverem faltando, sobe o servidor na porta
-  4000 em uma janela própria, espera responder e abre o navegador. Se o painel
-  já estiver rodando na 4000, só abre o navegador (e avisa se a porta estiver
-  ocupada por outro programa).
+- `abrir-gerenciador.bat`: antes de abrir, atualiza o código com `git pull`.
+  Se a pasta ainda não for um clone, transforma em clone na primeira abertura,
+  preservando `.env.local`, `overlay.db`, `node_modules` e `public/uploads`.
+  Se a pasta estiver vazia (só com o atalho e os dados locais), baixa o
+  projeto do zero, cria o `.env.local` a partir do exemplo e abre no Notepad
+  para preencher. Se o Git não estiver instalado, oferece instalar pelo
+  `winget`. Se o painel já estiver rodando na 4000, avisa, mostra se há
+  atualização e só abre o navegador. Se o pull falhar (sem internet,
+  alterações locais ou conflito), abre a versão atual mesmo assim.
 - `fechar-gerenciador.bat`: encerra o que estiver rodando na porta 4000. Se o
   processo não parecer ser o gerenciador, pede confirmação antes de matar.
+
+### Instalar em uma pasta nova (só com o atalho)
+
+1. Crie uma pasta vazia (ou coloque nela o `.env.local` do cliente, se já tiver).
+2. Coloque `abrir-gerenciador.bat` dentro dela e execute.
+3. Ele baixa o projeto do GitHub, cria o `.env.local` a partir do exemplo
+   (abre no Notepad), roda `npm install` e abre o painel.
+
+Se a pasta tiver outros arquivos, o atalho pede confirmação antes de copiar o
+projeto por cima. Ele não apaga `.env.local`, `overlay.db` nem `public/uploads`.
+
+> Se o painel já estiver rodando na porta 4000, feche com
+> `fechar-gerenciador.bat` antes de abrir o atalho em uma pasta nova.
 
 > OBS/GSI/Twitch/LivePix funcionam porque o app roda no PC do Theone. Se rodar
 > em outro computador, o controle do OBS e o GSI local não funcionam.
 
-## 4. Entregar uma versão nova
+## 4. Publicar uma versão nova
 
-Não há publicação automática nem release no GitHub: o app é entregue como
-pasta/zip e roda com `npm run dev`, igual no seu computador.
+A publicação é feita direto no branch `main` do GitHub. Não há zip, release
+nem token: os clientes atualizam ao abrir o atalho.
 
-### Gerar o zip
+1. Faça commit e envie para o `main`:
 
-1. Feche o gerenciador (`fechar-gerenciador.bat`).
-2. Atualize o `VERSAO.txt` com a versão nova (ex.: `1.1.0`).
-3. Compacte a pasta do projeto **sem** `.env.local`, `overlay.db` (e
-   `-shm`/`-wal`), `node_modules`, `.next`, `.git`, `.backup-antigo` e
-   `public/uploads`.
-4. Envie o zip por WhatsApp, Drive ou pendrive.
+   ```bash
+   git add .
+   git commit -m "sua mensagem"
+   git push origin main
+   ```
 
-### Instalar no PC do cliente
+2. No cliente, feche o painel com `fechar-gerenciador.bat` (se estiver aberto)
+   e abra `abrir-gerenciador.bat`. Ele roda `git pull`, limpa o cache do Next
+   e roda `npm install` se `package.json`/`package-lock.json` mudaram.
 
-1. Rode `fechar-gerenciador.bat`.
-2. Substitua os arquivos da pasta do app pelos do zip, mantendo `.env.local`,
-   `overlay.db` (e `-shm`/`-wal`), `node_modules` e `public/uploads`.
-3. Se o `package.json` mudou, rode `npm install` dentro da pasta.
-4. Abra com `abrir-gerenciador.bat`.
+3. Se o cliente estiver com o painel aberto, o atalho avisa que existe
+   atualização; é só fechar e abrir de novo.
 
-> Cliente novo: envie a pasta completa (sem `node_modules` e `.next`) já com o
-> `.env.local` dele preenchido. Na primeira abertura o `abrir-gerenciador.bat`
-> roda o `npm install` sozinho.
+O que é preservado em qualquer atualização: `.env.local`, `overlay.db` (e
+`-shm`/`-wal`), `public/uploads` e `node_modules`. O `.next` é limpo quando há
+código novo e o Next recria na próxima abertura.
 
-> Antes de substituir os arquivos, copie a pasta atual para outro lugar se
-> quiser poder voltar atrás.
+Na primeira configuração de uma pasta que ainda não é clone, é criado um backup
+em `.backup-antigo`.
+
+### Cliente novo
+
+1. Instale **Node.js 22.13+** e **Git** (o atalho também oferece instalar o Git).
+2. Crie uma pasta e coloque o `abrir-gerenciador.bat` (e o `.env.local` do
+   cliente, se já tiver).
+3. Execute o atalho; ele baixa o projeto, roda `npm install` e abre o painel.
+
+### Cliente que já tem o gerenciador (uma vez)
+
+1. Instale o Git (o atalho novo também oferece instalar pelo `winget`).
+2. Substitua o `abrir-gerenciador.bat` pelo novo (basta enviar esse arquivo).
+3. Abra o atalho; ele transforma a pasta em clone e atualiza o código,
+   mantendo os dados locais.
+
+> O `abrir-gerenciador.bat` novo precisa estar no `main` antes de ser enviado
+> ao cliente, porque a primeira atualização baixa o que estiver no `main`.
 
 ## 5. Importar os pedidos do Theone
 
