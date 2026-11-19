@@ -36,8 +36,13 @@ export default function RegistrosPedido({
 }) {
   const router = useRouter();
   const boost = isBoost(pedido.tipo_servico);
-  const [tipo, setTipo] = useState<'mmr' | 'partidas'>(boost ? 'mmr' : 'partidas');
+  const tipoPadrao: 'mmr' | 'partidas' = boost ? 'mmr' : 'partidas';
+  const unidade = rotuloQuantidade(pedido.tipo_servico);
+  const unidadeSingular = unidade.endsWith('s') ? unidade.slice(0, -1) : unidade;
+  const [tipo, setTipo] = useState<'mmr' | 'partidas'>(tipoPadrao);
   const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [formAberto, setFormAberto] = useState(false);
+  const formVisivel = formAberto || editandoId != null;
 
   const [data, setData] = useState('');
   const [mmrInicial, setMmrInicial] = useState(
@@ -69,6 +74,7 @@ export default function RegistrosPedido({
 
   function limparForm() {
     setEditandoId(null);
+    setTipo(tipoPadrao);
     setData('');
     setQuantidade('1');
     setHero('');
@@ -77,8 +83,32 @@ export default function RegistrosPedido({
     setDeaths('');
     setAssists('');
     setObservacoes('');
+    setMedalha(pedido.medalha ?? '');
     setMmrInicial(inteiroOuVazio(pedido.mmr_atual ?? pedido.mmr_inicial));
     setMmrFinal(inteiroOuVazio(pedido.mmr_atual ?? pedido.mmr_inicial));
+  }
+
+  function fecharForm() {
+    limparForm();
+    setFormAberto(false);
+  }
+
+  function alternarForm() {
+    if (formVisivel) {
+      fecharForm();
+      return;
+    }
+    limparForm();
+    setFormAberto(true);
+    setAjusteAberto(false);
+    setErro('');
+    setMensagem('');
+  }
+
+  function alternarAjuste() {
+    const abrir = !ajusteAberto;
+    setAjusteAberto(abrir);
+    if (abrir) fecharForm();
   }
 
   function aplicarResultado(res: { recalculo?: RespostaRecalculo; aviso?: string }) {
@@ -135,7 +165,7 @@ export default function RegistrosPedido({
         );
         aplicarResultado(res);
       }
-      limparForm();
+      fecharForm();
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -176,6 +206,8 @@ export default function RegistrosPedido({
   }
 
   function editar(r: RegistroTheone) {
+    setFormAberto(true);
+    setAjusteAberto(false);
     setEditandoId(r.id);
     setTipo(r.tipo);
     setData(dataInput(r.data));
@@ -189,7 +221,9 @@ export default function RegistrosPedido({
     setDeaths(inteiroOuVazio(r.deaths));
     setAssists(inteiroOuVazio(r.assists));
     setObservacoes(r.observacoes ?? '');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document
+      .getElementById('acompanhamento')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function excluir(r: RegistroTheone) {
@@ -227,15 +261,25 @@ export default function RegistrosPedido({
             Ao salvar, o sistema pergunta ao site o novo MMR final e o saldo restante.
           </p>
         </div>
-        {boost && (
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setAjusteAberto((v) => !v)}
-            className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-white transition-colors hover:bg-white/10"
+            onClick={alternarForm}
+            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-black transition-all hover:scale-[1.02]"
           >
-            {ajusteAberto ? 'Fechar ajuste' : 'Ajuste manual de MMR'}
+            {formVisivel ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+            {formVisivel ? 'Fechar' : `Adicionar ${unidadeSingular}`}
           </button>
-        )}
+          {boost && (
+            <button
+              type="button"
+              onClick={alternarAjuste}
+              className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-white transition-colors hover:bg-white/10"
+            >
+              {ajusteAberto ? 'Fechar ajuste' : 'Ajuste manual de MMR'}
+            </button>
+          )}
+        </div>
       </div>
 
       {erro && <Alerta tipo="erro">{erro}</Alerta>}
@@ -305,39 +349,26 @@ export default function RegistrosPedido({
 
       <form
         onSubmit={salvar}
-        className="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4"
+        className={`space-y-3 rounded-xl border border-white/10 bg-black/20 p-4 ${
+          formVisivel ? '' : 'hidden'
+        }`}
       >
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-white">
+            {editandoId
+              ? 'Editando registro'
+              : boost
+                ? 'Adicionar partida de boost'
+                : `Adicionar ${unidadeSingular}`}
+          </p>
           <button
             type="button"
-            onClick={() => setTipo('mmr')}
-            className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
-              tipo === 'mmr'
-                ? 'bg-[#e8a020] font-semibold text-black'
-                : 'border border-white/15 bg-white/5 text-gray-300 hover:bg-white/10'
-            }`}
+            onClick={fecharForm}
+            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+            title="Fechar"
           >
-            MMR
+            <X className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            onClick={() => setTipo('partidas')}
-            className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
-              tipo === 'partidas'
-                ? 'bg-[#e8a020] font-semibold text-black'
-                : 'border border-white/15 bg-white/5 text-gray-300 hover:bg-white/10'
-            }`}
-          >
-            {rotuloQuantidade(pedido.tipo_servico)}
-          </button>
-          {editandoId && (
-            <span className="ml-auto flex items-center gap-2 text-xs text-amber-300">
-              Editando registro
-              <button type="button" onClick={limparForm} className="text-gray-400 hover:text-white">
-                <X className="h-4 w-4" />
-              </button>
-            </span>
-          )}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -465,12 +496,16 @@ export default function RegistrosPedido({
             className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black transition-all hover:scale-[1.02] disabled:opacity-50"
           >
             {editandoId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            {salvando ? 'Salvando…' : editandoId ? 'Salvar edição' : 'Adicionar registro'}
+            {salvando
+              ? 'Salvando…'
+              : editandoId
+                ? 'Salvar edição'
+                : `Adicionar ${unidadeSingular}`}
           </button>
           {editandoId && (
             <button
               type="button"
-              onClick={limparForm}
+              onClick={fecharForm}
               className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm text-gray-300 hover:bg-white/10"
             >
               Cancelar

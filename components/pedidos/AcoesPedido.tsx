@@ -13,7 +13,6 @@ const SITE_URL = 'https://boostmmr.com.br';
 export default function AcoesPedido({ pedido }: { pedido: PedidoTheone }) {
   const router = useRouter();
   const [estado, setEstado] = useState(pedido.estado);
-  const [observacoes, setObservacoes] = useState(pedido.observacoes ?? '');
   const [salvando, setSalvando] = useState(false);
   const [recalculando, setRecalculando] = useState(false);
   const [erro, setErro] = useState('');
@@ -30,7 +29,7 @@ export default function AcoesPedido({ pedido }: { pedido: PedidoTheone }) {
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ estado, observacoes }),
+          body: JSON.stringify({ estado }),
         }
       );
       if (res.aviso) setAviso(res.aviso);
@@ -96,33 +95,19 @@ export default function AcoesPedido({ pedido }: { pedido: PedidoTheone }) {
         </Alerta>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-[220px_1fr]">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-400">Estado do pedido</label>
-          <select
-            value={estado}
-            onChange={(e) => setEstado(e.target.value)}
-            className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-white/30"
-          >
-            {Object.entries(ESTADOS).map(([valor, info]) => (
-              <option key={valor} value={valor}>
-                {info.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-400">
-            Observações do pedido
-          </label>
-          <textarea
-            value={observacoes}
-            onChange={(e) => setObservacoes(e.target.value)}
-            rows={2}
-            className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-white/30"
-            placeholder="Horários, instruções, etc."
-          />
-        </div>
+      <div className="sm:max-w-[260px]">
+        <label className="mb-1 block text-xs font-medium text-gray-400">Estado do pedido</label>
+        <select
+          value={estado}
+          onChange={(e) => setEstado(e.target.value)}
+          className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-white/30"
+        >
+          {Object.entries(ESTADOS).map(([valor, info]) => (
+            <option key={valor} value={valor}>
+              {info.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <button
