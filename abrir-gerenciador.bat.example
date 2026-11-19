@@ -12,11 +12,14 @@ rem      clone, preservando .env.local, overlay.db, node_modules e uploads;
 rem    - se a pasta estiver vazia (so com este .bat e os dados locais), baixa
 rem      o projeto do zero e cria o .env.local a partir do exemplo.
 rem
-rem  O repositorio e publico: nao precisa de conta no GitHub.
+rem  O repositorio e privado. O acesso usa um token fine-grained
+rem  (Contents: Read-only) embutido neste .bat; nao precisa de conta no GitHub.
+rem  Crie o token com validade de 1 ano e anote a data para renovar.
 rem  Se o Git nao estiver instalado, o script oferece instalar pelo winget.
 rem
-rem  Este .bat roda a partir de uma copia em TEMP porque a atualizacao pode
-rem  substituir o proprio arquivo enquanto ele esta em execucao.
+rem  O arquivo real (com o token) nao e versionado; o modelo versionado e
+rem  "abrir-gerenciador.bat.example". Este .bat roda a partir de uma copia em
+rem  TEMP para nao ser afetado por atualizacoes do repositorio em execucao.
 rem ===========================================================================
 
 if /i "%~1"=="/dentro" goto :corpo
@@ -24,6 +27,7 @@ if /i "%~1"=="/dentro" goto :corpo
 set "PASTA=%~dp0"
 if "%PASTA:~-1%"=="\" set "PASTA=%PASTA:~0,-1%"
 set "SEM_ATUALIZACAO="
+del /q "%TEMP%\gs-abrir.bat" >nul 2>nul
 copy /y "%~f0" "%TEMP%\gs-abrir.bat" >nul 2>nul
 if errorlevel 1 goto :sem_copia
 start "Gerenciador Simples - Theone" cmd /c ""%TEMP%\gs-abrir.bat" /dentro "%PASTA%""
@@ -44,7 +48,24 @@ if errorlevel 1 goto :erro_pasta
 
 set "PORTA=4000"
 set "URL=http://localhost:%PORTA%"
-set "REPO=https://github.com/romulando/gerenciador-simples.git"
+
+rem Token fine-grained do GitHub (Contents: Read-only neste repositorio).
+rem Validade sugerida: 1 ano. Substitua SEU_TOKEN_AQUI pelo token real.
+rem Este arquivo nao e versionado; o modelo fica em .example.
+set "GIT_TOKEN=SEU_TOKEN_AQUI"
+if not defined GIT_TOKEN set "GIT_TOKEN=SEU_TOKEN_AQUI"
+
+set "REPO_PATH=github.com/romulando/gerenciador-simples.git"
+set "REPO_PUBLICO=https://%REPO_PATH%"
+if /i "%GIT_TOKEN%"=="SEU_TOKEN_AQUI" (
+  set "REPO=%REPO_PUBLICO%"
+) else (
+  set "REPO=https://x-access-token:%GIT_TOKEN%@%REPO_PATH%"
+)
+
+set "LOG_GIT=%TEMP%\gs-git-erro.txt"
+set "GIT_TERMINAL_PROMPT=0"
+set "GCM_INTERACTIVE=Never"
 set "GIT="
 set "ATUALIZOU="
 set "INSTALAR="
@@ -54,6 +75,13 @@ echo   Gerenciador Simples - Theone
 echo   Porta fixa: %PORTA%
 echo ==========================================
 echo.
+
+if /i "%GIT_TOKEN%"=="SEU_TOKEN_AQUI" (
+  echo AVISO: o token do GitHub nao foi configurado neste .bat.
+  echo Enquanto o repositorio for publico, o download funciona sem token.
+  echo Depois que ele ficar privado, substitua SEU_TOKEN_AQUI pelo token fine-grained.
+  echo.
+)
 
 rem ---- 1) Node.js instalado? ----
 where node >nul 2>nul
@@ -94,8 +122,9 @@ if defined GIT goto :git_ok
 
 :sem_git
 echo.
-echo Sem o Git, o gerenciador abre normalmente, mas nao sera atualizado sozinho.
-echo Instale em https://git-scm.com/download/win e abra este atalho de novo.
+echo Sem o Git, o gerenciador so abre se o projeto ja estiver nesta pasta.
+echo Para baixar e atualizar, instale em https://git-scm.com/download/win
+echo e abra este atalho de novo.
 goto :apos_git
 
 :git_ok
@@ -176,10 +205,10 @@ goto :fim
 :ja_rodando
 echo.
 echo JA EXISTE UM SERVIDOR RODANDO NA PORTA %PORTA%.
-if defined GIT call :checar_atualizacao_rodando
 echo.
 echo Abrindo o navegador...
 start "" "%URL%"
+if defined GIT call :checar_atualizacao_rodando
 echo Esta janela fecha em alguns segundos.
 ping -n 5 127.0.0.1 >nul
 goto :fim
@@ -239,7 +268,8 @@ goto :fim
 echo.
 echo ERRO: nao encontrei o gerenciador nesta pasta.
 echo A pasta precisa ter "package.json", "app\layout.tsx" e "lib\overlay.ts".
-echo Se ela estava vazia, o download do GitHub falhou; verifique a internet.
+echo Se ela estava vazia, o projeto nao foi baixado.
+echo Confira se o Git esta instalado e veja as mensagens acima.
 pause
 goto :fim
 
@@ -264,6 +294,66 @@ if defined GIT exit /b 0
 if exist "%LOCALAPPDATA%\Programs\Git\cmd\git.exe" set "GIT=%LOCALAPPDATA%\Programs\Git\cmd\git.exe"
 if defined GIT exit /b 0
 exit /b 1
+
+rem ---------------------------------------------------------------------------
+rem diagnosticar_git: mostra o erro do Git com o token mascarado e explica
+rem os motivos mais comuns (token rejeitado, sem acesso, sem internet,
+rem alteracoes locais). Apaga o log no final.
+rem ---------------------------------------------------------------------------
+:diagnosticar_git
+if not exist "%LOG_GIT%" exit /b 0
+
+echo.
+echo ---- Detalhes do Git ----
+set "GS_LOG=%LOG_GIT%"
+set "GS_TOKEN=%GIT_TOKEN%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=$env:GS_LOG; $t=$env:GS_TOKEN; if (Test-Path -LiteralPath $p) { $l = @(Get-Content -LiteralPath $p -ErrorAction SilentlyContinue); if ($t) { $l = $l | ForEach-Object { $_.Replace($t,'***') } }; if ($l.Count -gt 0) { $l | Select-Object -Last 20 } else { '(sem detalhes)' } } else { '(sem detalhes)' }"
+set "GS_TOKEN="
+set "GS_LOG="
+echo -------------------------
+
+findstr /i /c:"Authentication failed" /c:"Invalid username or token" /c:"Invalid username or password" /c:"Password authentication is not supported" /c:"could not read Username" /c:"terminal prompts disabled" /c:"error: 401" "%LOG_GIT%" >nul 2>nul
+if not errorlevel 1 (
+  echo.
+  echo MOTIVO PROVAVEL: o GitHub rejeitou o token.
+  echo Ele pode estar invalido, expirado ou revogado.
+  echo Gere um novo token fine-grained ^(Contents: Read-only^) e substitua no .bat.
+  goto :diag_fim
+)
+
+findstr /i /c:"Repository not found" /c:"error: 404" "%LOG_GIT%" >nul 2>nul
+if not errorlevel 1 (
+  echo.
+  echo MOTIVO PROVAVEL: repositorio nao encontrado ^(404^).
+  echo O token pode nao ter acesso a este repositorio, ou a URL esta errada.
+  echo Confira no GitHub se o token tem o repo "gerenciador-simples"
+  echo e a permissao Contents: Read-only.
+  goto :diag_fim
+)
+
+findstr /i /c:"Could not resolve host" /c:"Failed to connect" /c:"unable to access" /c:"timed out" /c:"Connection refused" /c:"Connection reset" "%LOG_GIT%" >nul 2>nul
+if not errorlevel 1 (
+  echo.
+  echo MOTIVO PROVAVEL: sem conexao com o GitHub.
+  echo Verifique a internet, o proxy ou o firewall e tente de novo.
+  goto :diag_fim
+)
+
+findstr /i /c:"local changes" /c:"Not possible to fast-forward" /c:"diverged" /c:"CONFLICT" /c:"would be overwritten" "%LOG_GIT%" >nul 2>nul
+if not errorlevel 1 (
+  echo.
+  echo MOTIVO PROVAVEL: ha alteracoes locais ou o historico divergiu.
+  echo Feche com "fechar-gerenciador.bat" e tente de novo. Se persistir,
+  echo faca backup da pasta e apague a pasta .git para baixar de novo.
+  goto :diag_fim
+)
+
+echo.
+echo MOTIVO: veja a mensagem do Git acima.
+
+:diag_fim
+del /q "%LOG_GIT%" >nul 2>nul
+exit /b 0
 
 rem ---------------------------------------------------------------------------
 rem nome_permitido: arquivos que podem existir na pasta antes do bootstrap.
@@ -311,13 +401,16 @@ set "VELHO_CURTO="
 set /p VELHO_CURTO=<"%ARQ_GIT%"
 
 set "GIT_TERMINAL_PROMPT=0"
-"%GIT%" -C "%CD%" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 pull --ff-only --quiet >nul 2>nul
+del /q "%LOG_GIT%" >nul 2>nul
+"%GIT%" -C "%CD%" -c credential.helper= -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 pull --ff-only --quiet "%REPO%" main > "%LOG_GIT%" 2>&1
 if errorlevel 1 (
   echo.
-  echo AVISO: nao foi possivel atualizar agora ^(sem internet, alteracoes locais ou conflito^).
+  echo AVISO: nao foi possivel atualizar agora.
+  call :diagnosticar_git
   echo Abrindo a versao atual.
   exit /b 0
 )
+del /q "%LOG_GIT%" >nul 2>nul
 
 set "NOVO="
 "%GIT%" -C "%CD%" rev-parse HEAD > "%ARQ_GIT%" 2>nul
@@ -371,14 +464,17 @@ if exist ".git" rd /s /q ".git" >nul 2>nul
 set "CLONE=%TEMP%\gs-clone"
 if exist "%CLONE%" rd /s /q "%CLONE%" >nul 2>nul
 set "GIT_TERMINAL_PROMPT=0"
-"%GIT%" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone --depth=1 --branch main "%REPO%" "%CLONE%" >nul 2>nul
+del /q "%LOG_GIT%" >nul 2>nul
+"%GIT%" -c credential.helper= -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone --depth=1 --branch main "%REPO%" "%CLONE%" > "%LOG_GIT%" 2>&1
 if errorlevel 1 goto :bootstrap_falhou
-if not exist "%CLONE%\package.json" goto :bootstrap_falhou
-if not exist "%CLONE%\app\layout.tsx" goto :bootstrap_falhou
-if not exist "%CLONE%\lib\overlay.ts" goto :bootstrap_falhou
+if not exist "%CLONE%\package.json" goto :bootstrap_invalido
+if not exist "%CLONE%\app\layout.tsx" goto :bootstrap_invalido
+if not exist "%CLONE%\lib\overlay.ts" goto :bootstrap_invalido
+"%GIT%" -C "%CLONE%" remote set-url origin "%REPO_PUBLICO%" >nul 2>nul
+del /q "%LOG_GIT%" >nul 2>nul
 
 echo Copiando os arquivos...
-robocopy "%CLONE%" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
+robocopy "%CLONE%" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local abrir-gerenciador.bat token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 goto :bootstrap_falhou
 if not exist "package.json" goto :bootstrap_falhou
 if not exist "app\layout.tsx" goto :bootstrap_falhou
@@ -416,11 +512,26 @@ echo Crie uma pasta (por exemplo, "Gerenciador") e coloque o atalho dentro dela.
 pause
 exit /b 1
 
-:bootstrap_falhou
+:bootstrap_invalido
 if exist "%CLONE%" rd /s /q "%CLONE%" >nul 2>nul
+del /q "%LOG_GIT%" >nul 2>nul
+echo.
+echo ERRO: o repositorio foi baixado, mas nao parece ser o gerenciador.
+echo Confira se a branch "main" tem package.json, app\layout.tsx e lib\overlay.ts.
+pause
+exit /b 1
+
+:bootstrap_falhou
 echo.
 echo ERRO: nao consegui baixar o projeto do GitHub.
-echo Verifique a internet e tente de novo.
+if exist "%LOG_GIT%" (
+  call :diagnosticar_git
+) else (
+  echo Verifique a internet, o espaco em disco e as permissoes da pasta.
+)
+if exist "%CLONE%" rd /s /q "%CLONE%" >nul 2>nul
+echo.
+echo Corrija o motivo acima e tente de novo.
 pause
 exit /b 1
 
@@ -436,7 +547,7 @@ if not exist "lib\overlay.ts" goto :adotar_nao_e
 
 echo Fazendo backup da versao atual em .backup-antigo...
 if exist ".backup-antigo" rd /s /q ".backup-antigo" >nul 2>nul
-robocopy "%CD%" "%CD%\.backup-antigo" /E /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.git" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
+robocopy "%CD%" "%CD%\.backup-antigo" /E /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.git" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local abrir-gerenciador.bat token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (
   echo AVISO: nao consegui fazer o backup. Nada foi alterado.
   exit /b 0
@@ -446,20 +557,25 @@ set "CLONE=%TEMP%\gs-clone"
 if exist "%CLONE%" rd /s /q "%CLONE%" >nul 2>nul
 echo Baixando a versao mais recente...
 set "GIT_TERMINAL_PROMPT=0"
-"%GIT%" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone --depth=1 --branch main "%REPO%" "%CLONE%" >nul 2>nul
+del /q "%LOG_GIT%" >nul 2>nul
+"%GIT%" -c credential.helper= -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone --depth=1 --branch main "%REPO%" "%CLONE%" > "%LOG_GIT%" 2>&1
 if errorlevel 1 (
+  echo.
   echo AVISO: nao consegui baixar a versao nova. Abrindo a versao atual.
+  call :diagnosticar_git
   goto :adotar_falhou
 )
+del /q "%LOG_GIT%" >nul 2>nul
 if not exist "%CLONE%\package.json" goto :adotar_invalido
 if not exist "%CLONE%\app\layout.tsx" goto :adotar_invalido
+"%GIT%" -C "%CLONE%" remote set-url origin "%REPO_PUBLICO%" >nul 2>nul
 
 echo Aplicando os arquivos novos...
 taskkill /FI "WINDOWTITLE eq Gerenciador Simples - Dev*" /T /F >nul 2>nul
 ping -n 3 127.0.0.1 >nul
 
 for %%D in (app components lib) do if exist "%%D" rd /s /q "%%D" >nul 2>nul
-robocopy "%CLONE%" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
+robocopy "%CLONE%" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local abrir-gerenciador.bat token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 goto :adotar_restaurar
 if not exist "package.json" goto :adotar_restaurar
 if not exist "app\layout.tsx" goto :adotar_restaurar
@@ -490,7 +606,7 @@ goto :adotar_falhou
 echo.
 echo ERRO ao aplicar a atualizacao. Restaurando o backup...
 if exist ".git" rd /s /q ".git" >nul 2>nul
-robocopy "%CD%\.backup-antigo" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
+robocopy "%CD%\.backup-antigo" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local abrir-gerenciador.bat token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (
   echo.
   echo ATENCAO: a restauracao tambem falhou.
@@ -519,12 +635,21 @@ if not exist ".git" (
 )
 
 set "GIT_TERMINAL_PROMPT=0"
-"%GIT%" -C "%CD%" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 fetch --quiet origin >nul 2>nul
-if errorlevel 1 exit /b 0
+del /q "%LOG_GIT%" >nul 2>nul
+"%GIT%" -C "%CD%" -c credential.helper= -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 fetch --quiet "%REPO%" main > "%LOG_GIT%" 2>&1
+if errorlevel 1 (
+  echo.
+  echo AVISO: nao foi possivel verificar atualizacoes.
+  call :diagnosticar_git
+  echo.
+  pause
+  exit /b 0
+)
+del /q "%LOG_GIT%" >nul 2>nul
 
 set "ARQ_GIT=%TEMP%\gs-git.txt"
 set "ATRAS="
-"%GIT%" -C "%CD%" rev-list --count HEAD..origin/main > "%ARQ_GIT%" 2>nul
+"%GIT%" -C "%CD%" rev-list --count HEAD..FETCH_HEAD > "%ARQ_GIT%" 2>nul
 set /p ATRAS=<"%ARQ_GIT%"
 if not defined ATRAS exit /b 0
 if "%ATRAS%"=="0" (
@@ -533,7 +658,7 @@ if "%ATRAS%"=="0" (
 )
 
 set "REMOTO="
-"%GIT%" -C "%CD%" rev-parse --short origin/main > "%ARQ_GIT%" 2>nul
+"%GIT%" -C "%CD%" rev-parse --short FETCH_HEAD > "%ARQ_GIT%" 2>nul
 set /p REMOTO=<"%ARQ_GIT%"
 echo Ha uma atualizacao disponivel ^(%REMOTO%^).
 echo Feche com "fechar-gerenciador.bat" e abra de novo para atualizar.
