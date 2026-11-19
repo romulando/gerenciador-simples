@@ -16,9 +16,11 @@ export interface PedidoSemConta {
 // entrar na página + botão "Adicionar ID" por pedido.
 export default function AvisoSemConta({
   pedidos,
+  contaDetectada,
   onSalvo,
 }: {
   pedidos: PedidoSemConta[];
+  contaDetectada?: string | null;
   onSalvo?: () => void | Promise<void>;
 }) {
   const confirmar = useConfirmar();
@@ -80,6 +82,8 @@ export default function AvisoSemConta({
       {alvo && (
         <AdicionarIdContaModal
           trackingId={alvo.trackingId}
+          tipoServico={alvo.tipoServico}
+          contaSugerida={contaDetectada}
           onFechar={() => setAlvo(null)}
           onSalvo={async () => {
             setAlvo(null);

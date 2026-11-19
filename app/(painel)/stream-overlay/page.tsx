@@ -27,7 +27,7 @@ import type {
   EstadoCena,
   RespostaPainelOverlay,
 } from '@/components/stream-overlay/common';
-import { TIPOS_SERVICO } from '@/lib/helpers';
+import { TIPOS_SERVICO, ehServicoDuo, ehServicoSolo } from '@/lib/helpers';
 import type { PedidoTheone } from '@/lib/types';
 
 const ROTULOS_ESTADO: Record<EstadoCena, string> = {
@@ -87,12 +87,12 @@ export default function StreamOverlayPage() {
     window.history.replaceState(null, '', window.location.pathname);
   }, []);
 
-  const selecionar = useCallback(async (trackingId: string) => {
+  const selecionar = useCallback(async (trackingId: string, tipoServico?: string) => {
     setErro('');
     await buscarJson('/api/overlay/pedido', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ trackingId }),
+      body: JSON.stringify({ trackingId, tipoServico }),
     });
     setSelecionado(trackingId);
   }, []);
@@ -113,7 +113,15 @@ export default function StreamOverlayPage() {
       const ativos = (lista.pedidos ?? []).filter((p) => p.estado === 'em_andamento');
       if (ativos.length === 1) {
         autoSelecionou.current = true;
-        await selecionar(ativos[0].tracking_id);
+        await selecionar(ativos[0].tracking_id, ativos[0].tipo_servico);
+      }
+    }
+
+    // Seleção antiga sem o tipo salvo: reenvia o tipo para o vínculo duo/grupo.
+    if (atual && !data.pedidoSelecionadoTipo) {
+      const escolhido = (lista.pedidos ?? []).find((p) => p.tracking_id === atual);
+      if (escolhido?.tipo_servico) {
+        await selecionar(atual, escolhido.tipo_servico);
       }
     }
   }, [selecionar]);
@@ -188,8 +196,20 @@ export default function StreamOverlayPage() {
   );
 
   const contasPorTracking = new Map(contas.map((conta) => [conta.trackingId, conta.accountId]));
+  const contaSelecionada = selecionado
+    ? contasPorTracking.get(String(selecionado).toUpperCase()) ?? ''
+    : '';
+  const contaDetectada = dados?.gsi.online ? dados.gsi.contaDetectada ?? '' : '';
+  const contaDiferente = Boolean(
+    pedidoCompleto &&
+      !ehServicoDuo(pedidoCompleto.tipo_servico) &&
+      contaSelecionada &&
+      contaDetectada &&
+      contaSelecionada !== contaDetectada
+  );
   const pedidosSemConta = pedidos
     .filter((p) => p.estado === 'em_andamento')
+    .filter((p) => ehServicoSolo(p.tipo_servico))
     .filter((p) => !contasPorTracking.get(String(p.tracking_id ?? '').toUpperCase()))
     .map((p) => ({ trackingId: p.tracking_id, tipoServico: p.tipo_servico }));
 
@@ -233,7 +253,11 @@ export default function StreamOverlayPage() {
       {erro && <Alerta tipo="erro">{erro}</Alerta>}
       {avisoTwitch && <Alerta tipo={avisoTwitch.tipo}>{avisoTwitch.texto}</Alerta>}
 
-      <AvisoSemConta pedidos={pedidosSemConta} onSalvo={carregar} />
+      <AvisoSemConta
+        pedidos={pedidosSemConta}
+        contaDetectada={dados?.gsi.online ? dados.gsi.contaDetectada : null}
+        onSalvo={carregar}
+      />
 
       <GsiConfig />
 
@@ -310,7 +334,11 @@ export default function StreamOverlayPage() {
 
             <select
               value={selecionado}
-              onChange={(e) => void selecionar(e.target.value)}
+              onChange={(e) => {
+                const trackingId = e.target.value;
+                const escolhido = pedidos.find((p) => p.tracking_id === trackingId);
+                void selecionar(trackingId, escolhido?.tipo_servico);
+              }}
               className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-white/30"
             >
               <option value="">— Nenhum pedido selecionado —</option>
@@ -320,6 +348,39 @@ export default function StreamOverlayPage() {
                 </option>
               ))}
             </select>
+
+            {pedidoCompleto && (
+              <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
+                {ehServicoDuo(pedidoCompleto.tipo_servico) ? (
+                  <>
+                    <span className="font-semibold text-fuchsia-300">Duo/Grupo:</span> as partidas
+                    serão registradas neste pedido selecionado, mesmo que a conta logada seja a do
+                    booster.
+                  </>
+                ) : (
+                  <>
+                    <span className="font-semibold text-sky-300">Solo:</span> vínculo automático
+                    pela conta do Dota
+                    {dados?.gsi.contaDetectada ? ` (${dados.gsi.contaDetectada})` : ''}.
+                  </>
+                )}
+              </p>
+            )}
+
+            {(painel?.pendentes?.pendentes ?? 0) > 0 && (
+              <p className="mt-2 text-[11px] text-amber-300">
+                {painel?.pendentes?.pendentes} partida(s) aguardando registro no pedido. Abra o
+                Acompanhamento para sincronizar.
+              </p>
+            )}
+
+            {contaDiferente && (
+              <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-amber-200">
+                A conta logada ({contaDetectada}) não é a conta deste pedido (
+                {contaSelecionada}). Se for duo/grupo, o registro usa o pedido selecionado; caso
+                contrário, selecione o pedido correto.
+              </p>
+            )}
 
             {pedido ? (
               <>
@@ -432,7 +493,9 @@ export default function StreamOverlayPage() {
       {contaEditando && pedido?.trackingId && (
         <AdicionarIdContaModal
           trackingId={pedido.trackingId}
+          tipoServico={pedido.tipoServico}
           contaAtual={pedido.contaDota}
+          contaSugerida={dados?.gsi.online ? dados.gsi.contaDetectada : null}
           onFechar={() => setContaEditando(false)}
           onSalvo={async () => {
             setContaEditando(false);

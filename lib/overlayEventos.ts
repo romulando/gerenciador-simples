@@ -5,6 +5,7 @@ export type EventoOverlayTipo =
   | 'gsi_conectado'
   | 'conta_detectada'
   | 'jogo_salvo'
+  | 'vinculo_auto'
   | 'cena_trocada';
 
 export interface EventoOverlay {

@@ -7,8 +7,17 @@ import { agoraLocal } from './helpers';
 import { registrarEventoOverlay } from './overlayEventos';
 import { aoEstadoGsi } from './obsCenas';
 import { accountIdDeSteamId } from './contaDota';
-import { getPedidoSelecionado } from './pedidoSelecionado';
-import { pedidoDaPartida } from './pedidoContas';
+import {
+  getPedidoSelecionado,
+  getPedidoSelecionadoTipo,
+  setPedidoSelecionado,
+} from './pedidoSelecionado';
+import {
+  getContaPedidoTipo,
+  listarContasPedidos,
+  resolverPedidoDaPartida,
+} from './pedidoContas';
+import { enfileirarPartida } from './registrosPendentes';
 
 export interface PayloadGsi {
   map?: Record<string, unknown>;
@@ -31,6 +40,7 @@ interface EstadoGsiInterno {
   iniciadaEm: string | null;
   partidaContada: boolean;
   ultimaPartida: { id: number; matchId: string | null; resultado: string; hero: string } | null;
+  ultimaContaEvento: string;
   silencioTratado: boolean;
 }
 
@@ -55,6 +65,7 @@ function estadoInterno(): EstadoGsiInterno {
       iniciadaEm: null,
       partidaContada: false,
       ultimaPartida: null,
+      ultimaContaEvento: '',
       silencioTratado: false,
     };
   }
@@ -217,6 +228,38 @@ function salvarPartida(
   };
 }
 
+// Conta detectada: registra o evento e, se ainda não há pedido selecionado,
+// seleciona automaticamente o único pedido vinculado a ela. Para duo/grupo a
+// seleção é manual (o booster joga na própria conta).
+function sincronizarSelecaoPorConta(db: DatabaseSync, conta: string): void {
+  if (!conta) return;
+  const s = estadoInterno();
+  if (conta !== s.ultimaContaEvento) {
+    s.ultimaContaEvento = conta;
+    const vinculo = listarContasPedidos(db).find((c) => c.accountId === conta);
+    registrarEventoOverlay(
+      db,
+      'conta_detectada',
+      `Conta logada no Dota 2 detectada: ${conta}${vinculo ? ` · pedido ${vinculo.trackingId}` : ''}`,
+      {
+        accountId: conta,
+        ...(vinculo ? { trackingId: vinculo.trackingId } : {}),
+      }
+    );
+  }
+
+  if (getPedidoSelecionado(db)) return;
+  const contas = listarContasPedidos(db).filter((c) => c.accountId === conta);
+  if (contas.length !== 1) return;
+  setPedidoSelecionado(db, contas[0].trackingId, contas[0].tipoServico);
+  registrarEventoOverlay(
+    db,
+    'vinculo_auto',
+    `Pedido ${contas[0].trackingId} selecionado automaticamente pela conta ${conta}`,
+    { accountId: conta, trackingId: contas[0].trackingId, tipoServico: contas[0].tipoServico }
+  );
+}
+
 // Processa o payload GSI: estado ao vivo, cenas e salvamento de partidas.
 export function processarGsi(payload: PayloadGsi): void {
   const db = getDb();
@@ -272,6 +315,7 @@ export function processarGsi(payload: PayloadGsi): void {
     const acc = accountIdDeSteamId(steamId);
     if (acc) s.accountId = acc;
   }
+  if (s.accountId) sincronizarSelecaoPorConta(db, s.accountId);
 
   const activity = String(player.activity ?? '').toLowerCase();
   const semPartida = !gameState || activity === 'menu';
@@ -299,8 +343,21 @@ export function processarGsi(payload: PayloadGsi): void {
     if (matchIdValidoGsi(s.matchId) && winTeam && playerTeam && !s.partidaContada) {
       s.partidaContada = true;
       const resultado = winTeam === playerTeam ? 'W' : 'L';
-      // Atribui a partida ao pedido selecionado ou à única conta vinculada.
-      const trackingId = pedidoDaPartida(db, s.accountId, getPedidoSelecionado(db));
+      const selecionado = getPedidoSelecionado(db);
+      const tipoSelecionado = getPedidoSelecionadoTipo(db);
+      // Atribui a partida ao pedido selecionado (duo/grupo) ou à conta do Dota.
+      const trackingId = resolverPedidoDaPartida(
+        db,
+        s.accountId,
+        selecionado,
+        tipoSelecionado
+      );
+      const tipoServico = trackingId
+        ? trackingId === selecionado && tipoSelecionado
+          ? tipoSelecionado
+          : getContaPedidoTipo(db, trackingId)
+        : '';
+      const finalizadaEm = agoraLocal();
       const partida = salvarPartida(db, {
         matchId: s.matchId,
         accountId: s.accountId,
@@ -313,8 +370,25 @@ export function processarGsi(payload: PayloadGsi): void {
         assists: s.assists,
         duracao: s.clock,
         iniciadaEm: s.iniciadaEm,
-        finalizadaEm: agoraLocal(),
+        finalizadaEm,
         fonte: 'gsi',
+      });
+
+      // O GSI é público e não tem sessão do Supabase: só enfileira. A gravação
+      // em records_theone acontece na rota autenticada / no painel.
+      enfileirarPartida(db, {
+        matchId: s.matchId ?? '',
+        accountId: s.accountId,
+        trackingId,
+        tipoServico,
+        hero: s.hero,
+        resultado,
+        kills: s.kills,
+        deaths: s.deaths,
+        assists: s.assists,
+        duracao: s.clock,
+        iniciadaEm: s.iniciadaEm,
+        finalizadaEm,
       });
       s.ultimaPartida = {
         id: partida.id,
@@ -328,7 +402,11 @@ export function processarGsi(payload: PayloadGsi): void {
           'jogo_salvo',
           `Jogo salvo: ${resultado === 'W' ? 'Vitória' : 'Derrota'}${
             s.hero ? ` · ${s.hero}` : ''
-          }${trackingId ? ` · pedido ${trackingId}` : ' · sem vínculo'}`,
+          }${
+            trackingId
+              ? ` · pedido ${trackingId} · aguardando registro`
+              : ' · sem vínculo'
+          }`,
           {
             partidaId: partida.id,
             matchId: s.matchId,

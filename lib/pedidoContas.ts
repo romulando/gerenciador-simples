@@ -2,12 +2,13 @@
 // Guardado no banco local (overlay.db) para o GSI (sem sessão/Supabase) usar
 // na atribuição automática das partidas.
 import type { DatabaseSync } from 'node:sqlite';
-import { agoraLocal } from './helpers';
+import { agoraLocal, ehServicoDuo } from './helpers';
 import { normalizarIdDota } from './contaDota';
 
 export interface ContaPedido {
   trackingId: string;
   accountId: string;
+  tipoServico: string;
   atualizadoEm: string;
 }
 
@@ -17,11 +18,14 @@ function trackingNormalizado(valor: unknown): string {
 
 export function listarContasPedidos(db: DatabaseSync): ContaPedido[] {
   const linhas = db
-    .prepare('SELECT trackingId, accountId, atualizadoEm FROM pedido_contas ORDER BY trackingId')
+    .prepare(
+      'SELECT trackingId, accountId, tipoServico, atualizadoEm FROM pedido_contas ORDER BY trackingId'
+    )
     .all() as unknown as ContaPedido[];
   return linhas.map((linha) => ({
     trackingId: trackingNormalizado(linha.trackingId),
     accountId: String(linha.accountId ?? '').replace(/\D/g, ''),
+    tipoServico: String(linha.tipoServico ?? ''),
     atualizadoEm: String(linha.atualizadoEm ?? ''),
   }));
 }
@@ -35,26 +39,58 @@ export function getContaPedido(db: DatabaseSync, trackingId: unknown): string {
   return String(linha?.accountId ?? '').replace(/\D/g, '');
 }
 
+export function getContaPedidoTipo(db: DatabaseSync, trackingId: unknown): string {
+  const id = trackingNormalizado(trackingId);
+  if (!id) return '';
+  const linha = db
+    .prepare('SELECT tipoServico FROM pedido_contas WHERE trackingId = ?')
+    .get(id) as { tipoServico: string } | undefined;
+  return String(linha?.tipoServico ?? '');
+}
+
 // Salva (ou remove, com conta vazia) o vínculo e devolve a conta normalizada.
 export function setContaPedido(
   db: DatabaseSync,
   trackingId: unknown,
-  accountId: unknown
+  accountId: unknown,
+  tipoServico?: unknown
 ): string {
   const id = trackingNormalizado(trackingId);
   const conta = normalizarIdDota(accountId);
+  const tipo = String(tipoServico ?? '').trim();
   if (!id) return '';
   if (!conta) {
     db.prepare('DELETE FROM pedido_contas WHERE trackingId = ?').run(id);
     return '';
   }
   db.prepare(
-    `INSERT INTO pedido_contas (trackingId, accountId, atualizadoEm)
-     VALUES (?, ?, ?)
+    `INSERT INTO pedido_contas (trackingId, accountId, tipoServico, atualizadoEm)
+     VALUES (?, ?, ?, ?)
      ON CONFLICT(trackingId) DO UPDATE SET
        accountId = excluded.accountId,
+       tipoServico = CASE
+         WHEN excluded.tipoServico <> '' THEN excluded.tipoServico
+         ELSE pedido_contas.tipoServico
+       END,
        atualizadoEm = excluded.atualizadoEm`
-  ).run(id, conta, agoraLocal());
+  ).run(id, conta, tipo, agoraLocal());
+
+  // Uma conta do Dota pertence a um pedido por vez no acompanhamento: ao
+  // vincular o ID a um novo pedido, o vínculo antigo da mesma conta deixa de
+  // valer (evita ambiguidade e partidas sem vínculo).
+  db.prepare('DELETE FROM pedido_contas WHERE accountId = ? AND trackingId <> ?').run(
+    conta,
+    id
+  );
+
+  // Partidas salvas antes do vínculo: libera o retry imediatamente para o
+  // próximo processamento (painel/aba) resolver o tracking por esta conta.
+  db.prepare(
+    `UPDATE registros_pendentes
+     SET ultimoErro = '',
+         atualizadoEm = datetime('now','localtime','-31 seconds')
+     WHERE status = 'pendente' AND trackingId = '' AND accountId = ?`
+  ).run(conta);
 
   // Backfill: partidas antigas dessa conta que ainda não tinham vínculo passam
   // a apontar para o pedido — somente quando a conta é exclusiva deste pedido.
@@ -89,4 +125,22 @@ export function pedidoDaPartida(
     .all(conta) as { trackingId: string }[];
   if (linhas.length !== 1) return '';
   return trackingNormalizado(linhas[0].trackingId);
+}
+
+// Pedido que deve receber a partida considerando o modo de acompanhamento:
+// - duo/grupo: vale o pedido selecionado na overlay (o booster joga na própria
+//   conta, então a conta da partida não é a do cliente);
+// - solo: vale a conta do Dota vinculada ao pedido.
+export function resolverPedidoDaPartida(
+  db: DatabaseSync,
+  accountId: unknown,
+  selecionado?: string | null,
+  tipoSelecionado?: string | null
+): string {
+  const idSelecionado = trackingNormalizado(selecionado);
+  if (idSelecionado) {
+    const tipo = String(tipoSelecionado ?? '').trim() || getContaPedidoTipo(db, idSelecionado);
+    if (ehServicoDuo(tipo)) return idSelecionado;
+  }
+  return pedidoDaPartida(db, accountId, idSelecionado);
 }

@@ -210,6 +210,12 @@ export default function GsiConfig() {
             <code className="text-gray-300">...\dota 2 beta\game\dota\cfg\gamestate_integration\</code>.
             Depois reinicie o Dota 2.
           </p>
+
+          <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-amber-200">
+            O arquivo tem o mesmo nome usado pelo gerenciador-pedidos. O último painel que
+            instalar o GSI é o que recebe os dados do Dota 2 — para registrar os pedidos do
+            Theone, instale por aqui.
+          </p>
         </div>
       )}
     </div>

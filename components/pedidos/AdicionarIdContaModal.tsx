@@ -8,12 +8,16 @@ import { contaDotaValida } from '@/lib/contaDota';
 
 export default function AdicionarIdContaModal({
   trackingId,
+  tipoServico,
   contaAtual,
+  contaSugerida,
   onFechar,
   onSalvo,
 }: {
   trackingId: string;
+  tipoServico?: string;
   contaAtual?: string | null;
+  contaSugerida?: string | null;
   onFechar: () => void;
   onSalvo: () => void | Promise<void>;
 }) {
@@ -28,7 +32,7 @@ export default function AdicionarIdContaModal({
       await enviarJson('/api/pedidos/contas', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackingId, accountId }),
+        body: JSON.stringify({ trackingId, accountId, tipoServico }),
       });
       await onSalvo();
     } catch (e) {
@@ -72,6 +76,16 @@ export default function AdicionarIdContaModal({
           dígitos) ou o <span className="text-gray-200">SteamID64</span> de 17 dígitos — convertemos
           automaticamente para o ID usado pelo GSI.
         </p>
+
+        {contaSugerida && (
+          <button
+            type="button"
+            onClick={() => setId(contaSugerida)}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20"
+          >
+            Usar conta logada no Dota 2: {contaSugerida}
+          </button>
+        )}
 
         {erro && <Alerta tipo="erro">{erro}</Alerta>}
 

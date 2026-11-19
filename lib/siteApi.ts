@@ -9,7 +9,8 @@ function numero(valor: unknown): number | null {
 export async function recalcularNoSite(
   pedido: PedidoTheone,
   registrosMmr: RegistroTheone[],
-  registrosPartidas: RegistroTheone[]
+  registrosPartidas: RegistroTheone[],
+  opcoes?: { timeoutMs?: number }
 ): Promise<RespostaRecalculo> {
   const base = (process.env.SITE_API_URL ?? '').replace(/\/+$/, '');
   const secret = process.env.THEONE_API_SECRET ?? '';
@@ -67,7 +68,8 @@ export async function recalcularNoSite(
   };
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20_000);
+  const timeoutMs = Math.max(1000, Number(opcoes?.timeoutMs) || 20_000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(`${base}/api/tracking-theone/recalcular`, {

@@ -235,6 +235,7 @@ export interface EventoOverlay {
 export interface ContaPedidoOverlay {
   trackingId: string;
   accountId: string;
+  tipoServico: string;
   atualizadoEm: string;
 }
 
@@ -244,7 +245,14 @@ export interface RespostaPainelOverlay {
   modoBoost: boolean;
   token: string;
   pedidoSelecionado?: string;
+  pedidoSelecionadoTipo?: string;
   contas?: ContaPedidoOverlay[];
+  pendentes?: {
+    pendentes: number;
+    recalculoPendente: number;
+    ultimoErro: string;
+    atualizadoEm: string | null;
+  };
   eventos: EventoOverlay[];
 }
 

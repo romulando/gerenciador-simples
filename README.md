@@ -149,6 +149,11 @@ Em `/stream-overlay`:
 3. Use o card **GSI do Dota 2** para instalar o `.cfg` na pasta do Dota.
 4. Configure OBS/Twitch/LivePix nos cards correspondentes.
 
+> O arquivo do GSI é o mesmo usado pelo `gerenciador-pedidos`: o último painel que
+> instalar é o que recebe os dados do Dota 2. Para os pedidos do Theone, instale
+> pelo Simples. Com o painel/aba de Acompanhamento aberto, as partidas são
+> registradas automaticamente no pedido (fila local + sincronização autenticada).
+
 ## 7. Teste da API de recálculo
 
 Com o site rodando:

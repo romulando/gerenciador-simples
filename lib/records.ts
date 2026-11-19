@@ -1,4 +1,5 @@
-import { atualizarPedido, listarRegistros, obterPedido } from './data';
+import { atualizarPedido, inserirRegistro, listarRegistros, obterPedido } from './data';
+import type { ClienteSupabase } from './data';
 import { chaveDataHora, normalizarDataRegistro, agoraLocal } from './helpers';
 import { registrarLog } from './data';
 import type { RegistroTheone } from './types';
@@ -33,44 +34,60 @@ export function ordemDaData(valor: unknown): number {
   return Number.isFinite(ms) ? Math.floor(ms / 1000) : Math.floor(Date.now() / 1000);
 }
 
-export async function recalcularDerivados(pedidoId: string): Promise<void> {
-  const pedido = await obterPedido(pedidoId);
+export async function recalcularDerivados(
+  pedidoId: string,
+  cliente?: ClienteSupabase
+): Promise<void> {
+  const pedido = await obterPedido(pedidoId, cliente);
   if (!pedido) return;
-  const registros = await listarRegistros(pedidoId);
+  const registros = await listarRegistros(pedidoId, cliente);
   const mmr = registros.filter((r) => r.tipo === 'mmr');
   const partidas = registros.filter((r) => r.tipo === 'partidas');
   const ultimo = mmr[mmr.length - 1];
   const mmrAtual = ultimo?.mmr_final ?? pedido.mmr_inicial ?? null;
   const partidasJogadas = partidas.reduce((acc, r) => acc + (Number(r.quantidade) || 0), 0);
-  await atualizarPedido(pedidoId, {
-    mmr_atual: mmrAtual,
-    partidas_jogadas: partidasJogadas,
-  });
+  await atualizarPedido(
+    pedidoId,
+    {
+      mmr_atual: mmrAtual,
+      partidas_jogadas: partidasJogadas,
+    },
+    cliente
+  );
 }
 
-export async function criarRegistro(dados: {
-  pedido_id: string;
-  tipo: 'mmr' | 'partidas' | 'ajuste_mmr';
-  data?: string;
-  mmr_inicial?: number;
-  mmr_final?: number;
-  quantidade?: number;
-  medalha?: string;
-  observacoes?: string;
-  hero?: string;
-  resultado?: string;
-  kills?: number | null;
-  deaths?: number | null;
-  assists?: number | null;
-  novoMmr?: number;
-  motivo?: MotivoAjuste;
-  motivoOutro?: string | null;
-}): Promise<RegistroTheone> {
-  const { inserirRegistro } = await import('./data');
-  const pedido = await obterPedido(dados.pedido_id);
+export async function criarRegistro(
+  dados: {
+    pedido_id: string;
+    tipo: 'mmr' | 'partidas' | 'ajuste_mmr';
+    data?: string;
+    mmr_inicial?: number;
+    mmr_final?: number;
+    quantidade?: number;
+    medalha?: string;
+    observacoes?: string;
+    hero?: string;
+    resultado?: string;
+    kills?: number | null;
+    deaths?: number | null;
+    assists?: number | null;
+    novoMmr?: number;
+    motivo?: MotivoAjuste;
+    motivoOutro?: string | null;
+    // Identificador idempotente do GSI (ex.: gsi:1234567890).
+    origemId?: string | null;
+    automatico?: boolean;
+  },
+  cliente?: ClienteSupabase
+): Promise<RegistroTheone> {
+  const pedido = await obterPedido(dados.pedido_id, cliente);
   if (!pedido) throw new Error('Pedido não encontrado.');
   const data = normalizarDataRegistro(dados.data);
-  const registros = await listarRegistros(dados.pedido_id);
+  const registros = await listarRegistros(dados.pedido_id, cliente);
+  const origemId = dados.origemId ?? null;
+  const automatico = dados.automatico === true;
+  const sufixoAuto = automatico ? ' · automático pelo GSI' : '';
+  const detalhesAuto = { automatico, origemId };
 
   if (dados.tipo === 'ajuste_mmr') {
     const novo = Number(dados.novoMmr);
@@ -98,24 +115,28 @@ export async function criarRegistro(dados: {
         ? (ordens.length ? Math.min(...ordens) - 1 : -1)
         : (ordens.length ? Math.max(...ordens) + 1 : 1);
 
-    const registro = await inserirRegistro({
-      pedido_id: dados.pedido_id,
-      tipo: 'mmr',
-      data,
-      mmr_inicial: novo,
-      mmr_final: novo,
-      observacoes,
-      motivo_ajuste: motivo,
-      ordem,
-      origem: 'theone',
-    });
+    const registro = await inserirRegistro(
+      {
+        pedido_id: dados.pedido_id,
+        tipo: 'mmr',
+        data,
+        mmr_inicial: novo,
+        mmr_final: novo,
+        observacoes,
+        motivo_ajuste: motivo,
+        ordem,
+        origem: 'theone',
+      },
+      cliente
+    );
     await registrarLog(
       dados.pedido_id,
       'ajuste_mmr',
       observacoes,
-      { registroId: registro.id, motivo, novoMmr: novo, data }
+      { registroId: registro.id, motivo, novoMmr: novo, data },
+      cliente
     );
-    await recalcularDerivados(dados.pedido_id);
+    await recalcularDerivados(dados.pedido_id, cliente);
     return registro;
   }
 
@@ -125,12 +146,49 @@ export async function criarRegistro(dados: {
     if (!Number.isInteger(mmrInicial) || mmrInicial < 0 || !Number.isInteger(mmrFinal) || mmrFinal < 0) {
       throw new Error('Informe o MMR inicial e o MMR final.');
     }
-    const registro = await inserirRegistro({
+    const registro = await inserirRegistro(
+      {
+        pedido_id: dados.pedido_id,
+        tipo: 'mmr',
+        data,
+        mmr_inicial: mmrInicial,
+        mmr_final: mmrFinal,
+        observacoes: String(dados.observacoes ?? ''),
+        hero: String(dados.hero ?? ''),
+        resultado: dados.resultado === 'W' || dados.resultado === 'L' ? dados.resultado : '',
+        kills: dados.kills ?? null,
+        deaths: dados.deaths ?? null,
+        assists: dados.assists ?? null,
+        ordem: ordemDaData(data),
+        origem: 'theone',
+        origem_id: origemId,
+      },
+      cliente
+    );
+    await registrarLog(
+      dados.pedido_id,
+      'mmr',
+      `Registro de MMR: ${mmrInicial} → ${mmrFinal} (${mmrFinal - mmrInicial >= 0 ? '+' : ''}${
+        mmrFinal - mmrInicial
+      })${sufixoAuto}`,
+      { registroId: registro.id, data, mmrInicial, mmrFinal, ...detalhesAuto },
+      cliente
+    );
+    await recalcularDerivados(dados.pedido_id, cliente);
+    return registro;
+  }
+
+  const quantidade = Number(dados.quantidade);
+  if (!Number.isInteger(quantidade) || quantidade <= 0) {
+    throw new Error('Informe a quantidade de partidas/fichas/pontos.');
+  }
+  const registro = await inserirRegistro(
+    {
       pedido_id: dados.pedido_id,
-      tipo: 'mmr',
+      tipo: 'partidas',
       data,
-      mmr_inicial: mmrInicial,
-      mmr_final: mmrFinal,
+      quantidade,
+      medalha: String(dados.medalha ?? pedido.medalha ?? ''),
       observacoes: String(dados.observacoes ?? ''),
       hero: String(dados.hero ?? ''),
       resultado: dados.resultado === 'W' || dados.resultado === 'L' ? dados.resultado : '',
@@ -139,45 +197,20 @@ export async function criarRegistro(dados: {
       assists: dados.assists ?? null,
       ordem: ordemDaData(data),
       origem: 'theone',
-    });
-    await registrarLog(
-      dados.pedido_id,
-      'mmr',
-      `Registro de MMR: ${mmrInicial} → ${mmrFinal} (${mmrFinal - mmrInicial >= 0 ? '+' : ''}${
-        mmrFinal - mmrInicial
-      })`,
-      { registroId: registro.id, data, mmrInicial, mmrFinal }
-    );
-    await recalcularDerivados(dados.pedido_id);
-    return registro;
-  }
-
-  const quantidade = Number(dados.quantidade);
-  if (!Number.isInteger(quantidade) || quantidade <= 0) {
-    throw new Error('Informe a quantidade de partidas/fichas/pontos.');
-  }
-  const registro = await inserirRegistro({
-    pedido_id: dados.pedido_id,
-    tipo: 'partidas',
-    data,
-    quantidade,
-    medalha: String(dados.medalha ?? pedido.medalha ?? ''),
-    observacoes: String(dados.observacoes ?? ''),
-    hero: String(dados.hero ?? ''),
-    resultado: dados.resultado === 'W' || dados.resultado === 'L' ? dados.resultado : '',
-    kills: dados.kills ?? null,
-    deaths: dados.deaths ?? null,
-    assists: dados.assists ?? null,
-    ordem: ordemDaData(data),
-    origem: 'theone',
-  });
+      origem_id: origemId,
+    },
+    cliente
+  );
   await registrarLog(
     dados.pedido_id,
     'partidas',
-    `Registro de partidas: +${quantidade}${registro.medalha ? ` · ${registro.medalha}` : ''}`,
-    { registroId: registro.id, data, quantidade, medalha: registro.medalha }
+    `Registro de partidas: +${quantidade}${
+      registro.medalha ? ` · ${registro.medalha}` : ''
+    }${sufixoAuto}`,
+    { registroId: registro.id, data, quantidade, medalha: registro.medalha, ...detalhesAuto },
+    cliente
   );
-  await recalcularDerivados(dados.pedido_id);
+  await recalcularDerivados(dados.pedido_id, cliente);
   return registro;
 }
 
