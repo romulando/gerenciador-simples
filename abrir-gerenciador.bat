@@ -146,25 +146,30 @@ exit /b %errorlevel%
 
 rem ---------------------------------------------------------------------------
 rem checar_atualizacao: compara a versao local com a ultima release publicada
-rem   0 = segue com a versao local (atualizada, ou sem conexao)
+rem   0 = segue com a versao local (atualizada, sem token ou sem conexao)
 rem   1 = atualizador aberto em outra janela; nao abra o app agora
 rem ---------------------------------------------------------------------------
 :checar_atualizacao
 if not exist "%~dp0atualizar-gerenciador.bat" exit /b 0
+rem Copia de desenvolvimento (tem .git): quem atualiza e o dono, nao o .bat.
+if exist "%~dp0.git" exit /b 0
+rem O pacote distribuido leva o token de leitura em token.dat.
+if not exist "%~dp0token.dat" exit /b 0
 
 set "VERSAO_LOCAL="
 if exist "VERSAO.txt" for /f "usebackq delims=" %%v in ("VERSAO.txt") do if not defined VERSAO_LOCAL set "VERSAO_LOCAL=%%v"
 if not defined VERSAO_LOCAL set "VERSAO_LOCAL=0.0.0"
 
 echo Procurando atualizacoes...
-set "ARQ=%TEMP%\gs-versao-check.txt"
-if exist "%ARQ%" del /q "%ARQ%" >nul 2>nul
-call :baixar "https://github.com/romulando/gerenciador-simples/releases/latest/download/VERSAO.txt" "%ARQ%"
+set "ARQ_JSON=%TEMP%\gs-release.json"
+set "ARQ_TXT=%TEMP%\gs-release.txt"
+del /q "%ARQ_JSON%" "%ARQ_TXT%" >nul 2>nul
+call :baixar_release "%ARQ_JSON%" "%ARQ_TXT%"
 if errorlevel 1 exit /b 0
 
 set "VERSAO_NOVA="
-for /f "usebackq delims=" %%v in ("%ARQ%") do if not defined VERSAO_NOVA set "VERSAO_NOVA=%%v"
-del /q "%ARQ%" >nul 2>nul
+for /f "usebackq delims=" %%v in ("%ARQ_TXT%") do if not defined VERSAO_NOVA set "VERSAO_NOVA=%%v"
+del /q "%ARQ_JSON%" "%ARQ_TXT%" >nul 2>nul
 if not defined VERSAO_NOVA exit /b 0
 if /i "%VERSAO_LOCAL%"=="%VERSAO_NOVA%" exit /b 0
 
@@ -186,17 +191,33 @@ start "" "%~dp0atualizar-gerenciador.bat" /auto
 exit /b 1
 
 rem ---------------------------------------------------------------------------
-rem baixar <url> <destino>   -> errorlevel 0 = ok
+rem baixar_release <json> <versao.txt>
+rem Le a ultima release do repo privado e grava a versao (sem o "v").
 rem ---------------------------------------------------------------------------
-:baixar
+:baixar_release
+call :requisicao "https://api.github.com/repos/romulando/gerenciador-simples/releases/latest" "%~1"
+if errorlevel 1 exit /b 1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Get-Content -Raw -LiteralPath '%~1' | ConvertFrom-Json; if (-not $r.tag_name) { exit 1 }; ($r.tag_name -replace '^v','') | Set-Content -LiteralPath '%~2' -Encoding ascii } catch { exit 1 }" >nul 2>nul
+if errorlevel 1 exit /b 1
+if not exist "%~2" exit /b 1
+exit /b 0
+
+rem ---------------------------------------------------------------------------
+rem requisicao <url> <destino> [accept]
+rem Baixa usando o token de token.dat (o repo e privado). 0 = ok
+rem ---------------------------------------------------------------------------
+:requisicao
+set "TOKEN=%GS_TOKEN%"
+if not defined TOKEN for /f "usebackq delims=" %%t in ("%~dp0token.dat") do if not defined TOKEN set "TOKEN=%%t"
+if not defined TOKEN exit /b 1
+set "ACCEPT=%~3"
+if not defined ACCEPT set "ACCEPT=application/vnd.github+json"
 where curl >nul 2>nul
-if errorlevel 1 goto :baixar_ps
-curl -fsSL --retry 2 --max-time 30 -o "%~2" "%~1" 2>nul
-if not errorlevel 1 (
-  if exist "%~2" exit /b 0
-)
-:baixar_ps
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '%~1' -OutFile '%~2' -UseBasicParsing -TimeoutSec 30 } catch { exit 1 }" >nul 2>nul
+if errorlevel 1 goto :requisicao_ps
+curl -fsSL --retry 2 --max-time 300 -H "Authorization: Bearer %TOKEN%" -H "Accept: %ACCEPT%" -H "User-Agent: gerenciador-simples" -o "%~2" "%~1" 2>nul
+if not errorlevel 1 if exist "%~2" exit /b 0
+:requisicao_ps
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; $h = @{ 'Authorization' = 'Bearer %TOKEN%'; 'Accept' = '%ACCEPT%'; 'User-Agent' = 'gerenciador-simples' }; Invoke-WebRequest -Uri '%~1' -Headers $h -OutFile '%~2' -UseBasicParsing -TimeoutSec 300 } catch { exit 1 }" >nul 2>nul
 if errorlevel 1 exit /b 1
 if not exist "%~2" exit /b 1
 exit /b 0

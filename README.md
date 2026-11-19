@@ -59,27 +59,50 @@ Dá para abrir, fechar e atualizar o painel com duplo clique, sem usar o termina
 
 ## 4. Atualizar o app de quem usa
 
-O cliente não precisa de conta no GitHub nem de `git`. O fluxo é:
+O repositório é **privado**. O download das atualizações usa um token de
+leitura que viaja dentro do pacote (`token.dat`), então o cliente não precisa de
+conta no GitHub nem do `git` instalado.
 
-1. Você decide que a versão está boa e roda `publicar-versao.bat`. Ele pede o
-   número da nova versão (ex.: `1.0.1`), grava no `VERSAO.txt`, faz commit,
-   push, cria a tag `v1.0.1` e publica uma release no GitHub com o
-   `gerenciador.zip`.
-2. Quando o cliente abre o `abrir-gerenciador.bat` (com o app fechado), ele lê
-   a versão da última release e, se for diferente da instalada, pergunta:
-   *"Atualização disponível. Atualizar agora? [S/N]"*.
-3. Se ele aceitar, o `atualizar-gerenciador.bat` baixa o zip, para o servidor,
-   faz backup da versão atual em `.backup-antigo`, copia os arquivos novos,
-   roda `npm install` só se o `package.json` mudou e abre o app de novo.
+### Uma vez só: criar o token
 
-O que a atualização **nunca** toca: `.env.local`, `overlay.db` (e
-`-shm`/`-wal`), `node_modules`, `.next` e `public/uploads`. O
-`.backup-antigo` é a versão anterior completa, para voltar atrás se algo der
-errado — pode apagar quando quiser.
+1. GitHub → **Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens → Generate new token**.
+2. *Repository access*: **Only select repositories** → `gerenciador-simples`.
+3. *Repository permissions* → **Contents: Read-only** (nada além disso).
+4. Cole o token no arquivo `token.txt` na raiz do projeto.
+
+O `token.txt` está no `.gitignore`: ele não entra no repositório nem no
+histórico. Só o zip publicado carrega uma cópia, como `token.dat`.
+
+### A cada versão
+
+1. Rode `publicar-versao.bat` e informe a versão nova (ex.: `1.0.1`).
+2. Ele grava o `VERSAO.txt`, comita, faz push, cria a tag `v1.0.1`, monta o zip
+   só com arquivos versionados, injeta o `token.dat`, publica a release e deixa
+   uma cópia em `dist\gerenciador-1.0.1.zip`.
+3. Cliente com o app fechado: ao abrir o `abrir-gerenciador.bat`, ele consulta a
+   última release e pergunta *"Atualização disponível. Atualizar agora?
+   [S/N]"*. Se aceitar, o `atualizar-gerenciador.bat` para o servidor, faz
+   backup em `.backup-antigo`, copia os arquivos novos, roda `npm install` só se
+   o `package.json` mudou e abre o app de novo.
+
+### Cliente novo (ou primeira migração)
+
+Envie o zip de `dist\` (pendrive, WhatsApp, Drive). É ele que traz o
+`token.dat`; sem esse arquivo o app não consegue verificar atualizações e avisa
+isso.
+
+O que a atualização **nunca** toca: `.env.local`, `token.dat`, `overlay.db` (e
+`-shm`/`-wal`), `node_modules`, `.next` e `public/uploads`. O `.backup-antigo`
+é a versão anterior completa, para voltar atrás — pode apagar quando quiser.
 
 > A versão publicada é a do commit da tag, não o que está no seu computador. Se
 > você misturar trabalho pela metade, ele não vai para o cliente: só vai para
 > frente quando você rodar o `publicar-versao.bat`.
+
+> Se o token vazar: revogue em GitHub → Settings → Developer settings, crie
+> outro, coloque no `token.txt` e publique uma versão nova. As instalações
+> antigas param de atualizar e precisam receber um zip novo.
 
 ## 5. Importar os pedidos do Theone
 

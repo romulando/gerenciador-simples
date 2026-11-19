@@ -7,3 +7,6 @@ overlay.db-wal
 public/uploads
 tsconfig.tsbuildinfo
 .backup-antigo
+dist
+token.txt
+token.dat
