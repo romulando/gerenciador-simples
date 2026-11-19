@@ -8,6 +8,7 @@ import {
   getPedidoSelecionado,
 } from '@/lib/overlay';
 import { getPedidoSelecionadoTipo } from '@/lib/pedidoSelecionado';
+import { getCenasAtivas } from '@/lib/obsCenas';
 import { listarEventosOverlay } from '@/lib/overlayEventos';
 import { listarContasPedidos } from '@/lib/pedidoContas';
 import { processarPendentes, resumoPendentes, contarPendentes } from '@/lib/registrosPendentes';
@@ -33,6 +34,7 @@ export async function GET() {
   return NextResponse.json(
     {
       dados: await dadosOverlay(db),
+      cenasAtivo: getCenasAtivas(db),
       limiteWins: getOverlayWinsLimite(db),
       modoBoost: getOverlayModoBoost(db),
       token: getOverlayToken(db),

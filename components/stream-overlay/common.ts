@@ -29,6 +29,9 @@ export type EstadoCena = 'menu' | 'draft' | 'game' | 'descanso';
 
 export const ESTADOS_OVERLAY: readonly EstadoCena[] = ['menu', 'draft', 'game', 'descanso'];
 
+// Cena única usada quando a troca de cenas do OBS está desligada no painel.
+export const CENA_FIXA: EstadoCena = 'game';
+
 export type LayoutsPorCena = Partial<Record<EstadoCena, LayoutOverlay>>;
 
 export interface PedidoOverlay {
@@ -241,6 +244,8 @@ export interface ContaPedidoOverlay {
 
 export interface RespostaPainelOverlay {
   dados: DadosOverlay;
+  // Troca de cenas desligada: a overlay usa apenas a CENA_FIXA.
+  cenasAtivo?: boolean;
   limiteWins: number;
   modoBoost: boolean;
   token: string;
@@ -266,6 +271,8 @@ export interface NomesCenas {
 }
 
 export interface RespostaCenasObs {
+  // Troca de cenas ligada/desligada no Controle de Cenas.
+  ativo: boolean;
   conectado: boolean;
   cenaAtual: string | null;
   cenas: string[];

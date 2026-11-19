@@ -14,7 +14,9 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import Alerta from '@/components/ui/Alerta';
+import ToggleSwitch from '@/components/ui/ToggleSwitch';
 import { btnSecondary, buscarJson, inputCls, labelCls } from '@/components/pedidos/common';
+import { CENA_FIXA } from './common';
 import type { EstadoCena, NomesCenas, RespostaCenasObs } from './common';
 
 const BOTOES: { estado: EstadoCena; rotulo: string; Icone: LucideIcon }[] = [
@@ -30,7 +32,12 @@ interface RespostaConexao {
   conexao: { host: string; port: number; senhaDefinida: boolean };
 }
 
-export default function ControleCenas() {
+interface ControleCenasProps {
+  // Avisa a página para a prévia trocar de layout na hora.
+  onCenasAtivasChange?: (ativo: boolean) => void;
+}
+
+export default function ControleCenas({ onCenasAtivasChange }: ControleCenasProps) {
   const [dados, setDados] = useState<RespostaCenasObs | null>(null);
   const [nomes, setNomes] = useState<NomesCenas | null>(null);
   const [erro, setErro] = useState('');
@@ -43,6 +50,8 @@ export default function ControleCenas() {
   const [senha, setSenha] = useState('');
   const [salvandoConexao, setSalvandoConexao] = useState(false);
   const [salvoConexao, setSalvoConexao] = useState(false);
+  const [ativoLocal, setAtivoLocal] = useState<boolean | null>(null);
+  const [salvandoAtivo, setSalvandoAtivo] = useState(false);
   const iniciadoRef = useRef(false);
 
   const carregar = useCallback(async () => {
@@ -87,6 +96,27 @@ export default function ControleCenas() {
       document.removeEventListener('visibilitychange', aoVisibilidade);
     };
   }, [carregar]);
+
+  async function alternarCenasAtivas(novo: boolean) {
+    setErro('');
+    setAtivoLocal(novo);
+    setSalvandoAtivo(true);
+    try {
+      await buscarJson('/api/overlay/cenas', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ativo: novo }),
+      });
+      onCenasAtivasChange?.(novo);
+      await carregar();
+      setAtivoLocal(null);
+    } catch (e) {
+      setAtivoLocal(null);
+      setErro((e as Error).message);
+    } finally {
+      setSalvandoAtivo(false);
+    }
+  }
 
   async function forcar(estado: EstadoCena) {
     setErro('');
@@ -153,7 +183,9 @@ export default function ControleCenas() {
     }
   }
 
-  const ativo = dados?.ultimoEstado ?? null;
+  const cenasAtivas = ativoLocal ?? dados?.ativo ?? true;
+  const estadoAtivo = dados?.ultimoEstado ?? null;
+  const rotuloCenaFixa = BOTOES.find((b) => b.estado === CENA_FIXA)?.rotulo ?? 'Jogando';
 
   return (
     <section className="relative rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-xl">
@@ -163,172 +195,206 @@ export default function ControleCenas() {
           <Clapperboard className="h-5 w-5 text-amber-500" />
           Controle de Cenas
         </h2>
-        <div className="flex items-center gap-2">
-          {dados?.modoDescanso && (
+        {cenasAtivas && (
+          <div className="flex items-center gap-2">
+            {dados?.modoDescanso && (
+              <span
+                className="flex items-center gap-1.5 rounded-full border border-[#e8a020]/40 bg-[#e8a020]/10 px-2.5 py-1 text-xs font-medium text-[#e8a020]"
+                title="O GSI não troca automaticamente para a cena de Menu enquanto o modo Descanso estiver ativo"
+              >
+                <Coffee className="h-3.5 w-3.5" />
+                Descanso ativo
+              </span>
+            )}
             <span
-              className="flex items-center gap-1.5 rounded-full border border-[#e8a020]/40 bg-[#e8a020]/10 px-2.5 py-1 text-xs font-medium text-[#e8a020]"
-              title="O GSI não troca automaticamente para a cena de Menu enquanto o modo Descanso estiver ativo"
-            >
-              <Coffee className="h-3.5 w-3.5" />
-              Descanso ativo
-            </span>
-          )}
-          <span
-            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
-              dados?.conectado
-                ? 'border-green-500/40 bg-green-500/10 text-green-300'
-                : 'border-white/15 bg-white/5 text-gray-400'
-            }`}
-          >
-            <span
-              className={`h-2 w-2 rounded-full ${dados?.conectado ? 'bg-green-400' : 'bg-gray-500'}`}
-            />
-            {dados?.conectado
-              ? `OBS: conectado${dados.cenaAtual ? ` · ${dados.cenaAtual}` : ''}`
-              : 'OBS: desconectado'}
-          </span>
-          <button
-            type="button"
-            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
-            onClick={() => setMostrarConexao((v) => !v)}
-            title="Conexão OBS"
-            aria-label="Conexão OBS"
-          >
-            <PlugZap className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {BOTOES.map(({ estado, rotulo, Icone }) => {
-          const ativado = ativo === estado;
-          return (
-            <button
-              key={estado}
-              type="button"
-              onClick={() => void forcar(estado)}
-              disabled={forcando !== null}
-              className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-300 disabled:opacity-60 ${
-                ativado
-                  ? 'border-[#e8a020]/60 bg-[#e8a020]/15 text-white shadow-[0_0_16px_rgba(232,160,32,0.25)]'
-                  : 'border-white/10 bg-white/5 text-gray-300 hover:bg-white/10'
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                dados?.conectado
+                  ? 'border-green-500/40 bg-green-500/10 text-green-300'
+                  : 'border-white/15 bg-white/5 text-gray-400'
               }`}
             >
-              {forcando === estado ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Icone className={`h-4 w-4 ${ativado ? 'text-[#e8a020]' : ''}`} />
-              )}
-              {rotulo}
+              <span
+                className={`h-2 w-2 rounded-full ${dados?.conectado ? 'bg-green-400' : 'bg-gray-500'}`}
+              />
+              {dados?.conectado
+                ? `OBS: conectado${dados.cenaAtual ? ` · ${dados.cenaAtual}` : ''}`
+                : 'OBS: desconectado'}
+            </span>
+            <button
+              type="button"
+              className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+              onClick={() => setMostrarConexao((v) => !v)}
+              title="Conexão OBS"
+              aria-label="Conexão OBS"
+            >
+              <PlugZap className="h-4 w-4" />
             </button>
-          );
-        })}
+          </div>
+        )}
       </div>
 
-      {nomes && (
-        <div className="mt-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {BOTOES.map(({ estado, rotulo }) => (
-              <div key={estado}>
-                <label className={labelCls} htmlFor={`cena-${estado}`}>
-                  Nome da Cena - {rotulo}
-                </label>
-                <input
-                  id={`cena-${estado}`}
-                  list="cenas-obs"
-                  value={nomes[estado]}
-                  onChange={(e) => setNomes({ ...nomes, [estado]: e.target.value })}
-                  className={inputCls}
-                />
+      <ToggleSwitch
+        checked={cenasAtivas}
+        onChange={(v) => void alternarCenasAtivas(v)}
+        label="Troca de cenas"
+        icon={<Clapperboard className="h-4 w-4" />}
+        badge={cenasAtivas ? 'ligada' : 'desligada'}
+        title="Ligada: o OBS troca entre Menu/Draft/Jogando/Descanso. Desligada: nenhuma cena é trocada e a overlay usa apenas o layout da cena Jogando."
+        disabled={salvandoAtivo}
+      />
+
+      {!cenasAtivas && (
+        <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-dashed border-white/15 bg-white/[0.02] px-3 py-3">
+          <Clapperboard className="mt-0.5 h-4 w-4 shrink-0 text-[#e8a020]" />
+          <p className="text-sm leading-relaxed text-gray-400">
+            Troca de cenas desligada. O OBS não muda de cena e a overlay usa apenas o layout da
+            cena fixa <span className="font-semibold text-[#e8a020]">{rotuloCenaFixa}</span>.
+          </p>
+        </div>
+      )}
+
+      {cenasAtivas && (
+        <>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {BOTOES.map(({ estado, rotulo, Icone }) => {
+              const ativado = estadoAtivo === estado;
+              return (
+                <button
+                  key={estado}
+                  type="button"
+                  onClick={() => void forcar(estado)}
+                  disabled={forcando !== null}
+                  className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-300 disabled:opacity-60 ${
+                    ativado
+                      ? 'border-[#e8a020]/60 bg-[#e8a020]/15 text-white shadow-[0_0_16px_rgba(232,160,32,0.25)]'
+                      : 'border-white/10 bg-white/5 text-gray-300 hover:bg-white/10'
+                  }`}
+                >
+                  {forcando === estado ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Icone className={`h-4 w-4 ${ativado ? 'text-[#e8a020]' : ''}`} />
+                  )}
+                  {rotulo}
+                </button>
+              );
+            })}
+          </div>
+
+          {nomes && (
+            <div className="mt-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {BOTOES.map(({ estado, rotulo }) => (
+                  <div key={estado}>
+                    <label className={labelCls} htmlFor={`cena-${estado}`}>
+                      Nome da Cena - {rotulo}
+                    </label>
+                    <input
+                      id={`cena-${estado}`}
+                      list="cenas-obs"
+                      value={nomes[estado]}
+                      onChange={(e) => setNomes({ ...nomes, [estado]: e.target.value })}
+                      className={inputCls}
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <datalist id="cenas-obs">
-            {(dados?.cenas ?? []).map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
-          <button
-            type="button"
-            className={`${btnSecondary} mt-3 w-full`}
-            onClick={() => void salvarNomes()}
-            disabled={salvandoNomes}
-          >
-            <span className="flex items-center justify-center gap-1.5">
-              {salvoNomes ? (
-                <Check className="h-4 w-4 text-green-400" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              {salvandoNomes ? 'Salvando...' : salvoNomes ? 'Nomes salvos!' : 'Salvar Nomes das Cenas'}
-            </span>
-          </button>
-        </div>
-      )}
+              <datalist id="cenas-obs">
+                {(dados?.cenas ?? []).map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              <button
+                type="button"
+                className={`${btnSecondary} mt-3 w-full`}
+                onClick={() => void salvarNomes()}
+                disabled={salvandoNomes}
+              >
+                <span className="flex items-center justify-center gap-1.5">
+                  {salvoNomes ? (
+                    <Check className="h-4 w-4 text-green-400" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {salvandoNomes
+                    ? 'Salvando...'
+                    : salvoNomes
+                      ? 'Nomes salvos!'
+                      : 'Salvar Nomes das Cenas'}
+                </span>
+              </button>
+            </div>
+          )}
 
-      {mostrarConexao && (
-        <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3">
-          <p className="mb-2 text-xs font-medium text-gray-300">Conexão OBS (WebSocket)</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label className={labelCls} htmlFor="obs-host">
-                Host
-              </label>
-              <input
-                id="obs-host"
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                className={inputCls}
-                placeholder="127.0.0.1"
-              />
+          {mostrarConexao && (
+            <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+              <p className="mb-2 text-xs font-medium text-gray-300">Conexão OBS (WebSocket)</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div>
+                  <label className={labelCls} htmlFor="obs-host">
+                    Host
+                  </label>
+                  <input
+                    id="obs-host"
+                    value={host}
+                    onChange={(e) => setHost(e.target.value)}
+                    className={inputCls}
+                    placeholder="127.0.0.1"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls} htmlFor="obs-porta">
+                    Porta
+                  </label>
+                  <input
+                    id="obs-porta"
+                    inputMode="numeric"
+                    value={porta}
+                    onChange={(e) => setPorta(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                    className={inputCls}
+                    placeholder="4455"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls} htmlFor="obs-senha">
+                    Senha
+                  </label>
+                  <input
+                    id="obs-senha"
+                    type="password"
+                    value={senha}
+                    onChange={(e) => setSenha(e.target.value)}
+                    className={inputCls}
+                    placeholder={dados?.conexao.senhaDefinida ? '•••• (definida)' : 'sem senha'}
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                className={`${btnSecondary} mt-3 w-full`}
+                onClick={() => void salvarConexao()}
+                disabled={salvandoConexao}
+              >
+                <span className="flex items-center justify-center gap-1.5">
+                  {salvoConexao ? (
+                    <Check className="h-4 w-4 text-green-400" />
+                  ) : (
+                    <PlugZap className="h-4 w-4" />
+                  )}
+                  {salvandoConexao
+                    ? 'Salvando...'
+                    : salvoConexao
+                      ? 'Conexão salva!'
+                      : 'Salvar conexão'}
+                </span>
+              </button>
             </div>
-            <div>
-              <label className={labelCls} htmlFor="obs-porta">
-                Porta
-              </label>
-              <input
-                id="obs-porta"
-                inputMode="numeric"
-                value={porta}
-                onChange={(e) => setPorta(e.target.value.replace(/\D/g, '').slice(0, 5))}
-                className={inputCls}
-                placeholder="4455"
-              />
-            </div>
-            <div>
-              <label className={labelCls} htmlFor="obs-senha">
-                Senha
-              </label>
-              <input
-                id="obs-senha"
-                type="password"
-                value={senha}
-                onChange={(e) => setSenha(e.target.value)}
-                className={inputCls}
-                placeholder={dados?.conexao.senhaDefinida ? '•••• (definida)' : 'sem senha'}
-              />
-            </div>
-          </div>
-          <button
-            type="button"
-            className={`${btnSecondary} mt-3 w-full`}
-            onClick={() => void salvarConexao()}
-            disabled={salvandoConexao}
-          >
-            <span className="flex items-center justify-center gap-1.5">
-              {salvoConexao ? (
-                <Check className="h-4 w-4 text-green-400" />
-              ) : (
-                <PlugZap className="h-4 w-4" />
-              )}
-              {salvandoConexao ? 'Salvando...' : salvoConexao ? 'Conexão salva!' : 'Salvar conexão'}
-            </span>
-          </button>
-        </div>
-      )}
+          )}
 
-      {dados && !dados.conectado && dados.erro && (
-        <p className="mt-2 text-[11px] text-gray-500">OBS indisponível: {dados.erro}</p>
+          {dados && !dados.conectado && dados.erro && (
+            <p className="mt-2 text-[11px] text-gray-500">OBS indisponível: {dados.erro}</p>
+          )}
+        </>
       )}
 
       {erro && (

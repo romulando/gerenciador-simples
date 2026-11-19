@@ -21,7 +21,7 @@ import ControleTransicaoFogo from '@/components/stream-overlay/ControleTransicao
 import GsiConfig from '@/components/stream-overlay/GsiConfig';
 import AvisoSemConta from '@/components/pedidos/AvisoSemConta';
 import AdicionarIdContaModal from '@/components/pedidos/AdicionarIdContaModal';
-import { CANVAS_ALTURA, CANVAS_LARGURA } from '@/components/stream-overlay/common';
+import { CANVAS_ALTURA, CANVAS_LARGURA, CENA_FIXA } from '@/components/stream-overlay/common';
 import type {
   ContaPedidoOverlay,
   EstadoCena,
@@ -159,6 +159,13 @@ export default function StreamOverlayPage() {
       ? new URL(`/overlay?token=${encodeURIComponent(painel.token)}`, window.location.origin).toString()
       : '';
 
+  // Troca de cenas desligada: a prévia fica presa na cena fixa.
+  const cenasAtivo = painel?.cenasAtivo ?? true;
+  const urlPreview =
+    urlOverlay && !cenasAtivo
+      ? `${urlOverlay}&cena=${encodeURIComponent(CENA_FIXA)}`
+      : urlOverlay;
+
   async function copiarUrl() {
     if (!urlOverlay) return;
     if (!(await copiarTexto(urlOverlay))) {
@@ -286,6 +293,11 @@ export default function StreamOverlayPage() {
                   />
                   {dados?.gsi.online ? 'GSI: conectado' : 'GSI: aguardando'}
                 </span>
+                {!cenasAtivo && (
+                  <span className="flex items-center gap-1.5 rounded-full border border-[#e8a020]/40 bg-[#e8a020]/10 px-2.5 py-1 text-xs font-medium text-[#e8a020]">
+                    Cena fixa · {ROTULOS_ESTADO[CENA_FIXA]}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -296,7 +308,7 @@ export default function StreamOverlayPage() {
               {urlOverlay ? (
                 <iframe
                   title="Prévia da overlay"
-                  src={urlOverlay}
+                  src={urlPreview}
                   className="pointer-events-none absolute left-0 top-0 border-0"
                   style={{
                     width: CANVAS_LARGURA,
@@ -312,8 +324,18 @@ export default function StreamOverlayPage() {
               )}
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
-              A prévia usa exatamente a mesma página enviada ao OBS (fundo transparente). Use
-              “Copiar Overlay para OBS” e adicione como Browser Source 1920×1080.
+              {cenasAtivo ? (
+                <>
+                  A prévia usa exatamente a mesma página enviada ao OBS (fundo transparente). Use
+                  “Copiar Overlay para OBS” e adicione como Browser Source 1920×1080.
+                </>
+              ) : (
+                <>
+                  Troca de cenas desligada: a prévia e a overlay no OBS usam apenas o layout da
+                  cena fixa {ROTULOS_ESTADO[CENA_FIXA]}. Ligue “Troca de cenas” no Controle de
+                  Cenas para voltar a usar as quatro cenas.
+                </>
+              )}
             </p>
           </section>
 
@@ -454,7 +476,7 @@ export default function StreamOverlayPage() {
                 </div>
                 <div>
                   <span className="text-[11px] uppercase tracking-wide text-gray-500">
-                    Cena ativa
+                    {cenasAtivo ? 'Cena ativa' : 'Cena fixa'}
                   </span>
                   <p className="font-semibold text-gray-100">
                     {dados.estado ? ROTULOS_ESTADO[dados.estado] : '—'}
@@ -467,12 +489,16 @@ export default function StreamOverlayPage() {
             )}
           </section>
 
-          <ControleCenas />
+          <ControleCenas
+            onCenasAtivasChange={(ativo) =>
+              setPainel((atual) => (atual ? { ...atual, cenasAtivo: ativo } : atual))
+            }
+          />
         </div>
 
         <div className="space-y-6">
           <LogEventos eventos={painel?.eventos ?? []} />
-          <ControleTransicaoFogo />
+          {cenasAtivo && <ControleTransicaoFogo />}
         </div>
       </div>
 

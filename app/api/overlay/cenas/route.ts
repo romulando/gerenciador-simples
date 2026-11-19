@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import {
   forcarEstado,
+  getCenasAtivas,
   getEstadoExibicao,
   getModoDescanso,
   getObsConexao,
   getObsNomes,
+  setCenasAtivas,
   setObsConexao,
   setObsNomes,
   statusObs,
@@ -17,13 +19,18 @@ const ESTADOS_VALIDOS: EstadoCena[] = ['menu', 'draft', 'game', 'descanso'];
 // GET /api/overlay/cenas -> status do OBS + nomes/config das cenas
 export async function GET() {
   const db = getDb();
-  const status = await statusObs(db);
+  const ativo = getCenasAtivas(db);
+  // Desligado: nem tenta abrir conexão com o OBS.
+  const status = ativo
+    ? await statusObs(db)
+    : { conectado: false, cenaAtual: null, cenas: [], erro: '' };
   const conexao = getObsConexao(db);
   return NextResponse.json(
     {
       ...status,
+      ativo,
       nomes: getObsNomes(db),
-      modoDescanso: getModoDescanso(db),
+      modoDescanso: ativo ? getModoDescanso(db) : false,
       ultimoEstado: getEstadoExibicao(db),
       conexao: {
         host: conexao.host,
@@ -40,6 +47,9 @@ export async function PUT(req: NextRequest) {
   const db = getDb();
   const b = await req.json().catch(() => ({}));
 
+  if (typeof b.ativo === 'boolean') {
+    setCenasAtivas(db, b.ativo);
+  }
   if (b.nomes && typeof b.nomes === 'object') {
     setObsNomes(db, b.nomes as Record<EstadoCena, unknown>);
   }
@@ -50,6 +60,7 @@ export async function PUT(req: NextRequest) {
   const conexao = getObsConexao(db);
   return NextResponse.json({
     ok: true,
+    ativo: getCenasAtivas(db),
     nomes: getObsNomes(db),
     conexao: {
       host: conexao.host,
@@ -67,6 +78,11 @@ export async function POST(req: NextRequest) {
 
   if (!ESTADOS_VALIDOS.includes(estado)) {
     return NextResponse.json({ error: 'Estado inválido' }, { status: 400 });
+  }
+
+  // Troca de cenas desligada: responde ok sem tocar no OBS.
+  if (!getCenasAtivas(db)) {
+    return NextResponse.json({ ok: true, desativado: true });
   }
 
   const res = await forcarEstado(db, estado);

@@ -4,6 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 // Variante JSON do obs-websocket-js: compatível com qualquer OBS (a msgpack
 // exigiria suporte a MessagePack no servidor).
 import OBSWebSocket from 'obs-websocket-js/json';
+import { CENA_FIXA } from '../components/stream-overlay/common';
 import { registrarEventoOverlay } from './overlayEventos';
 
 export type EstadoCena = 'menu' | 'draft' | 'game' | 'descanso';
@@ -37,6 +38,7 @@ const CONEXAO_DEFAULT: ObsConexao = {
 const CHAVE_NOMES = 'obs_cenas';
 const CHAVE_CONEXAO = 'obs_conexao';
 const CHAVE_DESCANSO = 'obs_descanso';
+const CHAVE_CENAS_ATIVO = 'obs_cenas_ativo';
 const CHAVE_TRANSICAO_FOGO = 'overlay_transicao_fogo';
 
 const RETRY_CONEXAO_MS = 10_000;
@@ -153,6 +155,21 @@ function setModoDescanso(db: DatabaseSync, ativo: boolean): void {
   gravarConfig(db, CHAVE_DESCANSO, ativo ? '1' : '0');
 }
 
+// Troca de cenas ligada/desligada. Desligada, o app não toca no OBS e a
+// overlay usa uma única cena fixa (CENA_FIXA). Padrão ligada.
+export function getCenasAtivas(db: DatabaseSync): boolean {
+  const valor = (lerConfig(db, CHAVE_CENAS_ATIVO) ?? '').trim().toLowerCase();
+  if (valor === '') return true;
+  return valor === '1' || valor === 'true' || valor === 'on';
+}
+
+export function setCenasAtivas(db: DatabaseSync, ativo: boolean): boolean {
+  gravarConfig(db, CHAVE_CENAS_ATIVO, ativo ? '1' : '0');
+  // Uma transição já anunciada não pode trocar a cena depois de desligar.
+  if (!ativo) cancelarTransicao(estado());
+  return ativo;
+}
+
 // ─── Estado da conexão (globalThis sobrevive ao hot reload) ────────────────
 
 export interface TransicaoPendente {
@@ -222,6 +239,7 @@ export function getUltimoEstadoObs(): EstadoCena | null {
 // Cena que o painel deve acender: já reflete o destino de uma transição
 // anunciada, mesmo antes de o OBS trocar de fato.
 export function getEstadoExibicao(db: DatabaseSync): EstadoCena | null {
+  if (!getCenasAtivas(db)) return CENA_FIXA;
   const s = estado();
   return s.transicao?.destino ?? resolverEstadoAtual(db);
 }
@@ -237,6 +255,8 @@ function sincronizarCenaAtual(db: DatabaseSync, cena: string | null): void {
   const s = estado();
   s.cenaAtual = cena || null;
   if (!cena) return;
+  // Desligado não há modo Descanso: a troca de cenas está desativada.
+  if (!getCenasAtivas(db)) return;
   try {
     const ligado = cena === getObsNomes(db).descanso;
     if (getModoDescanso(db) !== ligado) setModoDescanso(db, ligado);
@@ -251,6 +271,8 @@ export function getCenaAtualObs(): string | null {
 }
 
 export function resolverEstadoAtual(db: DatabaseSync): EstadoCena | null {
+  // Troca de cenas desligada: a overlay usa só o layout da cena fixa.
+  if (!getCenasAtivas(db)) return CENA_FIXA;
   const s = estado();
   if (s.cenaAtual) {
     const nomes = getObsNomes(db);
@@ -469,6 +491,8 @@ export async function forcarEstado(
   alvo: EstadoCena
 ): Promise<ResultadoTroca> {
   const s = estado();
+  // Troca manual desativada: não mexe no OBS.
+  if (!getCenasAtivas(db)) return { ok: true, cenaAtual: s.cenaAtual, ignorada: true };
   const nome = getObsNomes(db)[alvo];
   if (!nome) return { ok: false, erro: 'Nome da cena não configurado', cenaAtual: null };
 
@@ -577,6 +601,9 @@ async function processarTransicao(db: DatabaseSync, alvo: EstadoCena): Promise<v
 // Chamado a cada payload do GSI (fire-and-forget; nunca derruba o GSI).
 // gameState vazio também é um sinal válido: significa "sem partida" (menu).
 export function aoEstadoGsi(db: DatabaseSync, gameState: string): void {
+  // Troca automática desativada: o GSI continua alimentando a overlay, mas
+  // não troca mais a cena do OBS.
+  if (!getCenasAtivas(db)) return;
   const alvo = mapearEstadoGsi(gameState);
   if (!alvo) return;
   void processarTransicao(db, alvo).catch(() => {});
