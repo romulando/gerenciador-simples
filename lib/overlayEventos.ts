@@ -1,5 +1,5 @@
 // Log de eventos da overlay de stream (tabela overlay_eventos do SQLite local).
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 
 export type EventoOverlayTipo =
   | 'gsi_conectado'
@@ -18,7 +18,7 @@ export interface EventoOverlay {
 const LIMITE_EVENTOS = 200;
 
 export function registrarEventoOverlay(
-  db: Database.Database,
+  db: DatabaseSync,
   tipo: EventoOverlayTipo,
   mensagem: string,
   detalhes?: unknown
@@ -39,15 +39,15 @@ export function registrarEventoOverlay(
   }
 }
 
-export function listarEventosOverlay(db: Database.Database, limite = 100): EventoOverlay[] {
+export function listarEventosOverlay(db: DatabaseSync, limite = 100): EventoOverlay[] {
   const n = Math.min(Math.max(Math.round(Number(limite) || 100), 1), LIMITE_EVENTOS);
   return db
     .prepare(
       'SELECT id, tipo, mensagem, detalhes, createdAt FROM overlay_eventos ORDER BY id DESC LIMIT ?'
     )
-    .all(n) as EventoOverlay[];
+    .all(n) as unknown as EventoOverlay[];
 }
 
-export function limparEventosOverlay(db: Database.Database): void {
+export function limparEventosOverlay(db: DatabaseSync): void {
   db.prepare('DELETE FROM overlay_eventos').run();
 }

@@ -1,18 +1,18 @@
 // Banco local do overlay: configuração, partidas do GSI e eventos.
 // Os dados de pedido/registros/tracking ficam no Supabase.
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 
 const dbPath = path.join(process.cwd(), 'overlay.db');
 
-const globalForDb = globalThis as unknown as { _overlayDb?: Database.Database };
+const globalForDb = globalThis as unknown as { _overlayDb?: DatabaseSync };
 
-export function getDb(): Database.Database {
+export function getDb(): DatabaseSync {
   if (globalForDb._overlayDb) return globalForDb._overlayDb;
 
-  const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('busy_timeout = 5000');
+  const db = new DatabaseSync(dbPath);
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA busy_timeout = 5000');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS config (

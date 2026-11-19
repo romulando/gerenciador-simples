@@ -1,13 +1,13 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 
-export function getConfigValor(db: Database.Database, chave: string): string | null {
+export function getConfigValor(db: DatabaseSync, chave: string): string | null {
   const row = db.prepare('SELECT valor FROM config WHERE chave = ?').get(chave) as
     | { valor: string }
     | undefined;
   return row ? row.valor : null;
 }
 
-export function setConfigValor(db: Database.Database, chave: string, valor: string): void {
+export function setConfigValor(db: DatabaseSync, chave: string, valor: string): void {
   db.prepare(
     `INSERT INTO config (chave, valor) VALUES (?, ?)
      ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor`

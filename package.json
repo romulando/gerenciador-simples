@@ -2,6 +2,9 @@
   "name": "gerenciador-simples",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "dev": "next dev -p 4000",
     "build": "next build",
@@ -11,7 +14,6 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.116.0",
-    "better-sqlite3": "^13.0.3",
     "lucide-react": "^1.47.0",
     "next": "16.3.5",
     "obs-websocket-js": "^5.0.8",
@@ -20,8 +22,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^9.6.0",
-    "@types/node": "^20",
+    "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

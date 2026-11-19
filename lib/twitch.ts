@@ -3,7 +3,7 @@
 // no banco local (SQLite sem criptografia, como o restante do projeto) e
 // nunca são devolvidos pelas APIs do painel.
 import crypto from 'crypto';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import { getConfigValor, setConfigValor } from './config';
 import type { TwitchStatusOverlay } from '../components/stream-overlay/common';
 
@@ -38,19 +38,19 @@ async function fetchComTimeout(url: string, init?: RequestInit): Promise<Respons
   }
 }
 
-function texto(db: Database.Database, chave: string): string {
+function texto(db: DatabaseSync, chave: string): string {
   return (getConfigValor(db, chave) ?? '').trim();
 }
 
-export function getTwitchClientId(db: Database.Database): string {
+export function getTwitchClientId(db: DatabaseSync): string {
   return texto(db, CHAVE_CLIENT_ID);
 }
 
-function getTwitchClientSecret(db: Database.Database): string {
+function getTwitchClientSecret(db: DatabaseSync): string {
   return texto(db, CHAVE_CLIENT_SECRET);
 }
 
-export function getTwitchStatus(db: Database.Database): TwitchStatusOverlay {
+export function getTwitchStatus(db: DatabaseSync): TwitchStatusOverlay {
   const clientId = getTwitchClientId(db);
   return {
     clientId,
@@ -66,7 +66,7 @@ export function getTwitchStatus(db: Database.Database): TwitchStatusOverlay {
 // mantém o que já estava salvo (permite editar só o Client ID). Trocar o
 // Client ID invalida os tokens antigos (são de outro app).
 export function setTwitchCredenciais(
-  db: Database.Database,
+  db: DatabaseSync,
   clientId: unknown,
   clientSecret: unknown
 ): TwitchStatusOverlay {
@@ -81,7 +81,7 @@ export function setTwitchCredenciais(
   return getTwitchStatus(db);
 }
 
-export function limparTokens(db: Database.Database): void {
+export function limparTokens(db: DatabaseSync): void {
   for (const chave of [
     CHAVE_ACCESS_TOKEN,
     CHAVE_REFRESH_TOKEN,
@@ -94,13 +94,13 @@ export function limparTokens(db: Database.Database): void {
   }
 }
 
-function definirErro(db: Database.Database, mensagem: string): void {
+function definirErro(db: DatabaseSync, mensagem: string): void {
   setConfigValor(db, CHAVE_ERRO, mensagem.slice(0, 300));
 }
 
 // URL de consentimento + state anti-CSRF (o cookie do state é gravado na rota).
 export function montarUrlAutorizacao(
-  db: Database.Database,
+  db: DatabaseSync,
   redirectUri: string
 ): { url: string; state: string } | null {
   const clientId = getTwitchClientId(db);
@@ -125,7 +125,7 @@ interface RespostaTokenTwitch {
 
 // Troca o `code` do callback por tokens e identifica o canal conectado.
 export async function concluirAutorizacao(
-  db: Database.Database,
+  db: DatabaseSync,
   code: string,
   redirectUri: string
 ): Promise<{ ok: boolean; mensagem: string }> {
@@ -187,7 +187,7 @@ export async function concluirAutorizacao(
 }
 
 // Renova o access token com o refresh token. Retorna null se não der.
-async function renovarAccessToken(db: Database.Database): Promise<string | null> {
+async function renovarAccessToken(db: DatabaseSync): Promise<string | null> {
   const clientId = getTwitchClientId(db);
   const clientSecret = getTwitchClientSecret(db);
   const refresh = texto(db, CHAVE_REFRESH_TOKEN);
@@ -218,7 +218,7 @@ async function renovarAccessToken(db: Database.Database): Promise<string | null>
   }
 }
 
-async function buscarTotalSubs(db: Database.Database, accessToken: string): Promise<Response> {
+async function buscarTotalSubs(db: DatabaseSync, accessToken: string): Promise<Response> {
   const broadcasterId = texto(db, CHAVE_USER_ID);
   const params = new URLSearchParams({ broadcaster_id: broadcasterId, first: '1' });
   return fetchComTimeout(`${URL_HELIX}/subscriptions?${params.toString()}`, {
@@ -235,7 +235,7 @@ interface CacheSubs {
   erro: boolean;
 }
 
-function lerCache(db: Database.Database): CacheSubs | null {
+function lerCache(db: DatabaseSync): CacheSubs | null {
   const bruto = getConfigValor(db, CHAVE_CACHE_SUBS);
   if (!bruto) return null;
   try {
@@ -251,7 +251,7 @@ function lerCache(db: Database.Database): CacheSubs | null {
   }
 }
 
-function gravarCache(db: Database.Database, total: number | null, erro: boolean): void {
+function gravarCache(db: DatabaseSync, total: number | null, erro: boolean): void {
   setConfigValor(
     db,
     CHAVE_CACHE_SUBS,
@@ -268,7 +268,7 @@ function gravarCache(db: Database.Database, total: number | null, erro: boolean)
 let emAndamento: Promise<{ contagem: number | null; erro: boolean }> | null = null;
 
 function iniciarAtualizacaoSubs(
-  db: Database.Database,
+  db: DatabaseSync,
   cache: CacheSubs | null
 ): Promise<{ contagem: number | null; erro: boolean }> {
   if (emAndamento) return emAndamento;
@@ -283,7 +283,7 @@ function iniciarAtualizacaoSubs(
 }
 
 export async function obterContagemSubs(
-  db: Database.Database
+  db: DatabaseSync
 ): Promise<{ contagem: number | null; erro: boolean }> {
   const cache = lerCache(db);
   if (cache) {
@@ -298,7 +298,7 @@ export async function obterContagemSubs(
 }
 
 async function buscarContagemRemota(
-  db: Database.Database,
+  db: DatabaseSync,
   cache: CacheSubs | null
 ): Promise<{ contagem: number | null; erro: boolean }> {
   const clientId = getTwitchClientId(db);

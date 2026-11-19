@@ -3,7 +3,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import { getConfigValor, setConfigValor } from './config';
 import { getEstadoGsi } from './gsi';
 import { obterPedidoPublicoTheone, type PedidoOverlayResumo } from './overlayOrder';
@@ -117,7 +117,7 @@ const CHAVE_TRANSICAO_FOGO = 'overlay_transicao_fogo';
 const SPONSORS_DIR = path.join(process.cwd(), 'public', 'uploads', 'sponsors');
 
 // Token usado na URL da overlay (/overlay?token=...). Gerado uma única vez.
-export function getOverlayToken(db: Database.Database): string {
+export function getOverlayToken(db: DatabaseSync): string {
   const existente = (getConfigValor(db, CHAVE_TOKEN) ?? '').trim();
   if (/^[a-f0-9]{16,64}$/i.test(existente)) return existente;
   const token = crypto.randomBytes(16).toString('hex');
@@ -125,13 +125,13 @@ export function getOverlayToken(db: Database.Database): string {
   return token;
 }
 
-export function getOverlayWinsLimite(db: Database.Database): number {
+export function getOverlayWinsLimite(db: DatabaseSync): number {
   const valor = Number(getConfigValor(db, CHAVE_LIMITE_WINS));
   if (!Number.isFinite(valor) || valor <= 0) return OVERLAY_WINS_LIMITE_DEFAULT;
   return Math.min(OVERLAY_WINS_LIMITE_MAX, Math.max(OVERLAY_WINS_LIMITE_MIN, Math.round(valor)));
 }
 
-export function setOverlayWinsLimite(db: Database.Database, valor: unknown): number {
+export function setOverlayWinsLimite(db: DatabaseSync, valor: unknown): number {
   const n = Math.min(
     OVERLAY_WINS_LIMITE_MAX,
     Math.max(OVERLAY_WINS_LIMITE_MIN, Math.round(Number(valor) || OVERLAY_WINS_LIMITE_DEFAULT))
@@ -142,13 +142,13 @@ export function setOverlayWinsLimite(db: Database.Database, valor: unknown): num
 
 // Modo Boost: exibe a linha medalha inicial -> final + MMRs na overlay.
 // Padrão ligado (comportamento anterior); pode ser desligado na Configuração.
-export function getOverlayModoBoost(db: Database.Database): boolean {
+export function getOverlayModoBoost(db: DatabaseSync): boolean {
   const valor = (getConfigValor(db, CHAVE_MODO_BOOST) ?? '').trim().toLowerCase();
   if (valor === '') return true;
   return valor === '1' || valor === 'true' || valor === 'on';
 }
 
-export function setOverlayModoBoost(db: Database.Database, valor: unknown): boolean {
+export function setOverlayModoBoost(db: DatabaseSync, valor: unknown): boolean {
   const ativo = valor === true || valor === 1 || valor === '1' || valor === 'true';
   setConfigValor(db, CHAVE_MODO_BOOST, ativo ? '1' : '0');
   return ativo;
@@ -157,25 +157,25 @@ export function setOverlayModoBoost(db: Database.Database, valor: unknown): bool
 // ─── Contador de subs da Twitch ────────────────────────────────────────────
 
 // Padrão desligado: não altera overlays existentes até o usuário configurar.
-export function getOverlaySubAtivo(db: Database.Database): boolean {
+export function getOverlaySubAtivo(db: DatabaseSync): boolean {
   const valor = (getConfigValor(db, CHAVE_SUB_ATIVO) ?? '').trim().toLowerCase();
   return valor === '1' || valor === 'true' || valor === 'on';
 }
 
-export function setOverlaySubAtivo(db: Database.Database, valor: unknown): boolean {
+export function setOverlaySubAtivo(db: DatabaseSync, valor: unknown): boolean {
   const ativo = valor === true || valor === 1 || valor === '1' || valor === 'true';
   setConfigValor(db, CHAVE_SUB_ATIVO, ativo ? '1' : '0');
   return ativo;
 }
 
 // Meta de subs (0 = sem meta; a barra de progresso fica oculta).
-export function getOverlaySubMeta(db: Database.Database): number {
+export function getOverlaySubMeta(db: DatabaseSync): number {
   const valor = Number(getConfigValor(db, CHAVE_SUB_META));
   if (!Number.isFinite(valor) || valor <= 0) return 0;
   return Math.min(OVERLAY_SUB_META_MAX, Math.round(valor));
 }
 
-export function setOverlaySubMeta(db: Database.Database, valor: unknown): number {
+export function setOverlaySubMeta(db: DatabaseSync, valor: unknown): number {
   const n = Math.min(
     OVERLAY_SUB_META_MAX,
     Math.max(OVERLAY_SUB_META_MIN, Math.round(Number(valor) || 0))
@@ -185,11 +185,11 @@ export function setOverlaySubMeta(db: Database.Database, valor: unknown): number
 }
 
 // Cor de destaque do card (faixa superior, rótulo, dot e barra de progresso).
-export function getOverlaySubCor(db: Database.Database): string {
+export function getOverlaySubCor(db: DatabaseSync): string {
   return normalizarCorHex(getConfigValor(db, CHAVE_SUB_COR));
 }
 
-export function setOverlaySubCor(db: Database.Database, valor: unknown): string {
+export function setOverlaySubCor(db: DatabaseSync, valor: unknown): string {
   const cor = normalizarCorHex(valor);
   setConfigValor(db, CHAVE_SUB_COR, cor);
   return cor;
@@ -198,35 +198,35 @@ export function setOverlaySubCor(db: Database.Database, valor: unknown): string 
 // ─── Barra de progresso do LivePix ─────────────────────────────────────────
 
 // Padrão desligado: não altera overlays existentes até o usuário configurar.
-export function getOverlayLivepixAtivo(db: Database.Database): boolean {
+export function getOverlayLivepixAtivo(db: DatabaseSync): boolean {
   const valor = (getConfigValor(db, CHAVE_LIVEPIX_ATIVO) ?? '').trim().toLowerCase();
   return valor === '1' || valor === 'true' || valor === 'on';
 }
 
-export function setOverlayLivepixAtivo(db: Database.Database, valor: unknown): boolean {
+export function setOverlayLivepixAtivo(db: DatabaseSync, valor: unknown): boolean {
   const ativo = valor === true || valor === 1 || valor === '1' || valor === 'true';
   setConfigValor(db, CHAVE_LIVEPIX_ATIVO, ativo ? '1' : '0');
   return ativo;
 }
 
-export function getOverlayLivepixEstilo(db: Database.Database): EstiloBarraLivepix {
+export function getOverlayLivepixEstilo(db: DatabaseSync): EstiloBarraLivepix {
   return normalizarEstiloLivepix(getConfigValor(db, CHAVE_LIVEPIX_ESTILO));
 }
 
-export function setOverlayLivepixEstilo(db: Database.Database, valor: unknown): EstiloBarraLivepix {
+export function setOverlayLivepixEstilo(db: DatabaseSync, valor: unknown): EstiloBarraLivepix {
   const estilo = normalizarEstiloLivepix(valor);
   setConfigValor(db, CHAVE_LIVEPIX_ESTILO, estilo);
   return estilo;
 }
 
 // Meta da barra em reais (0 = sem meta). Guardada em centavos (inteiro).
-export function getOverlayLivepixMeta(db: Database.Database): number {
+export function getOverlayLivepixMeta(db: DatabaseSync): number {
   const centavos = Number(getConfigValor(db, CHAVE_LIVEPIX_META));
   if (!Number.isFinite(centavos) || centavos <= 0) return 0;
   return Math.min(LIVEPIX_META_MAX, centavos / 100);
 }
 
-export function setOverlayLivepixMeta(db: Database.Database, valor: unknown): number {
+export function setOverlayLivepixMeta(db: DatabaseSync, valor: unknown): number {
   const reais = Math.min(LIVEPIX_META_MAX, Math.max(0, Number(valor) || 0));
   const centavos = Math.round(reais * 100);
   setConfigValor(db, CHAVE_LIVEPIX_META, String(centavos));
@@ -237,7 +237,7 @@ export function setOverlayLivepixMeta(db: Database.Database, valor: unknown): nu
 
 // Uma única configuração global: a paleta/duração escolhida vale para as
 // quatro cenas. Guardada como JSON para não espalhar chaves no config.
-export function getOverlayFogo(db: Database.Database): FogoOverlayConfig {
+export function getOverlayFogo(db: DatabaseSync): FogoOverlayConfig {
   const bruto = getConfigValor(db, CHAVE_TRANSICAO_FOGO);
   if (!bruto) return fogoPadrao();
   try {
@@ -253,7 +253,7 @@ export function getOverlayFogo(db: Database.Database): FogoOverlayConfig {
 }
 
 // Aceita atualização parcial (mantém o que não veio no corpo do PUT).
-export function setOverlayFogo(db: Database.Database, valor: unknown): FogoOverlayConfig {
+export function setOverlayFogo(db: DatabaseSync, valor: unknown): FogoOverlayConfig {
   const atual = getOverlayFogo(db);
   const bruto = (valor ?? {}) as Partial<FogoOverlayConfig>;
   const config: FogoOverlayConfig = {
@@ -402,7 +402,7 @@ export function sanitizarSlides(v: unknown, salvarImagens: boolean): SlidesOverl
   };
 }
 
-export function getOverlaySlides(db: Database.Database): SlidesOverlayConfig {
+export function getOverlaySlides(db: DatabaseSync): SlidesOverlayConfig {
   const bruto = getConfigValor(db, CHAVE_SLIDES);
   if (!bruto) return slidesPadrao();
   try {
@@ -412,7 +412,7 @@ export function getOverlaySlides(db: Database.Database): SlidesOverlayConfig {
   }
 }
 
-export function setOverlaySlides(db: Database.Database, valor: unknown): SlidesOverlayConfig {
+export function setOverlaySlides(db: DatabaseSync, valor: unknown): SlidesOverlayConfig {
   const atual = getOverlaySlides(db);
   const patch = (valor ?? {}) as Record<string, unknown>;
   // Mescla por cima da config atual: um PUT parcial (ex.: só a `ordem`)
@@ -479,7 +479,7 @@ export function sanitizarLayout(v: unknown): LayoutOverlay {
   return layout;
 }
 
-export function getOverlayLayout(db: Database.Database): LayoutOverlay | null {
+export function getOverlayLayout(db: DatabaseSync): LayoutOverlay | null {
   const bruto = getConfigValor(db, CHAVE_LAYOUT);
   if (!bruto) return null;
   try {
@@ -489,7 +489,7 @@ export function getOverlayLayout(db: Database.Database): LayoutOverlay | null {
   }
 }
 
-export function getOverlayLayouts(db: Database.Database): LayoutsPorCena {
+export function getOverlayLayouts(db: DatabaseSync): LayoutsPorCena {
   const bruto = getConfigValor(db, CHAVE_LAYOUT_CENAS);
   if (!bruto) return {};
   try {
@@ -516,7 +516,7 @@ export interface EstadoLayoutOverlay {
 // elementos no mesmo instante em que a cena troca no OBS. A config da
 // transição de fogo viaja junto para a overlay saber se deve animar a troca.
 export function estadoLayoutOverlay(
-  db: Database.Database,
+  db: DatabaseSync,
   cenaForcada?: EstadoCena | null
 ): EstadoLayoutOverlay {
   const estado = cenaForcada ?? resolverEstadoAtual(db);
@@ -529,7 +529,7 @@ export function estadoLayoutOverlay(
 }
 
 export function setOverlayLayoutCena(
-  db: Database.Database,
+  db: DatabaseSync,
   cena: EstadoCena,
   layout: unknown
 ): LayoutsPorCena {
@@ -551,7 +551,7 @@ export interface ContagemWins {
 // Com `accountId`, considera somente as partidas daquela conta (conta logada no
 // Dota 2 via GSI ou conta do pedido em exibição na overlay).
 export function contarWinsUltimas(
-  db: Database.Database,
+  db: DatabaseSync,
   limite: number,
   accountId?: string | null
 ): ContagemWins {
@@ -585,7 +585,7 @@ export function contarWinsUltimas(
 // ─── Pedido exibido na overlay (selecionado no painel) ────────────────────
 
 export async function pedidoDoOverlay(
-  db: Database.Database
+  db: DatabaseSync
 ): Promise<PedidoOverlayResumo | null> {
   const trackingId = getPedidoSelecionado(db);
   if (!trackingId) return null;
@@ -632,7 +632,7 @@ export interface DadosOverlay {
 }
 
 export async function dadosOverlay(
-  db: Database.Database,
+  db: DatabaseSync,
   cenaForcada?: EstadoCena | null
 ): Promise<DadosOverlay> {
   const gsi = getEstadoGsi();

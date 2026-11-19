@@ -29,6 +29,9 @@ O mesmo `THEONE_API_SECRET` precisa existir no `.env.local` do site
 
 ## 3. Instalar e rodar
 
+Pré-requisito: **Node.js 22.13 ou superior** (recomendado: 24 LTS). O banco local
+usa o `node:sqlite` embutido no Node, então não há dependência nativa para compilar.
+
 ```bash
 npm install
 npm run dev
@@ -42,67 +45,47 @@ desse usuário no Supabase.
 
 ### Atalhos no Windows (`.bat`)
 
-Dá para abrir, fechar e atualizar o painel com duplo clique, sem usar o terminal:
+Dá para abrir e fechar o painel com duplo clique, sem usar o terminal:
 
-- `abrir-gerenciador.bat`: confere se o Node.js está instalado, procura uma
-  versão nova publicada, roda `npm install` se as dependências estiverem
-  faltando, sobe o servidor na porta 4000 em uma janela própria, espera
-  responder e abre o navegador. Se o painel já estiver rodando na 4000, só abre
-  o navegador (e avisa se a porta estiver ocupada por outro programa).
+- `abrir-gerenciador.bat`: confere se o Node.js está instalado, roda
+  `npm install` se as dependências estiverem faltando, sobe o servidor na porta
+  4000 em uma janela própria, espera responder e abre o navegador. Se o painel
+  já estiver rodando na 4000, só abre o navegador (e avisa se a porta estiver
+  ocupada por outro programa).
 - `fechar-gerenciador.bat`: encerra o que estiver rodando na porta 4000. Se o
   processo não parecer ser o gerenciador, pede confirmação antes de matar.
-- `atualizar-gerenciador.bat`: baixa e instala a última versão publicada no
-  GitHub. Não precisa de conta no GitHub nem do `git` instalado.
 
 > OBS/GSI/Twitch/LivePix funcionam porque o app roda no PC do Theone. Se rodar
 > em outro computador, o controle do OBS e o GSI local não funcionam.
 
-## 4. Atualizar o app de quem usa
+## 4. Entregar uma versão nova
 
-O repositório é **privado**. O download das atualizações usa um token de
-leitura que viaja dentro do pacote (`token.dat`), então o cliente não precisa de
-conta no GitHub nem do `git` instalado.
+Não há publicação automática nem release no GitHub: o app é entregue como
+pasta/zip e roda com `npm run dev`, igual no seu computador.
 
-### Uma vez só: criar o token
+### Gerar o zip
 
-1. GitHub → **Settings → Developer settings → Personal access tokens →
-   Fine-grained tokens → Generate new token**.
-2. *Repository access*: **Only select repositories** → `gerenciador-simples`.
-3. *Repository permissions* → **Contents: Read-only** (nada além disso).
-4. Cole o token no arquivo `token.txt` na raiz do projeto.
+1. Feche o gerenciador (`fechar-gerenciador.bat`).
+2. Atualize o `VERSAO.txt` com a versão nova (ex.: `1.1.0`).
+3. Compacte a pasta do projeto **sem** `.env.local`, `overlay.db` (e
+   `-shm`/`-wal`), `node_modules`, `.next`, `.git`, `.backup-antigo` e
+   `public/uploads`.
+4. Envie o zip por WhatsApp, Drive ou pendrive.
 
-O `token.txt` está no `.gitignore`: ele não entra no repositório nem no
-histórico. Só o zip publicado carrega uma cópia, como `token.dat`.
+### Instalar no PC do cliente
 
-### A cada versão
+1. Rode `fechar-gerenciador.bat`.
+2. Substitua os arquivos da pasta do app pelos do zip, mantendo `.env.local`,
+   `overlay.db` (e `-shm`/`-wal`), `node_modules` e `public/uploads`.
+3. Se o `package.json` mudou, rode `npm install` dentro da pasta.
+4. Abra com `abrir-gerenciador.bat`.
 
-1. Rode `publicar-versao.bat` e informe a versão nova (ex.: `1.0.1`).
-2. Ele grava o `VERSAO.txt`, comita, faz push, cria a tag `v1.0.1`, monta o zip
-   só com arquivos versionados, injeta o `token.dat`, publica a release e deixa
-   uma cópia em `dist\gerenciador-1.0.1.zip`.
-3. Cliente com o app fechado: ao abrir o `abrir-gerenciador.bat`, ele consulta a
-   última release e pergunta *"Atualização disponível. Atualizar agora?
-   [S/N]"*. Se aceitar, o `atualizar-gerenciador.bat` para o servidor, faz
-   backup em `.backup-antigo`, copia os arquivos novos, roda `npm install` só se
-   o `package.json` mudou e abre o app de novo.
+> Cliente novo: envie a pasta completa (sem `node_modules` e `.next`) já com o
+> `.env.local` dele preenchido. Na primeira abertura o `abrir-gerenciador.bat`
+> roda o `npm install` sozinho.
 
-### Cliente novo (ou primeira migração)
-
-Envie o zip de `dist\` (pendrive, WhatsApp, Drive). É ele que traz o
-`token.dat`; sem esse arquivo o app não consegue verificar atualizações e avisa
-isso.
-
-O que a atualização **nunca** toca: `.env.local`, `token.dat`, `overlay.db` (e
-`-shm`/`-wal`), `node_modules`, `.next` e `public/uploads`. O `.backup-antigo`
-é a versão anterior completa, para voltar atrás — pode apagar quando quiser.
-
-> A versão publicada é a do commit da tag, não o que está no seu computador. Se
-> você misturar trabalho pela metade, ele não vai para o cliente: só vai para
-> frente quando você rodar o `publicar-versao.bat`.
-
-> Se o token vazar: revogue em GitHub → Settings → Developer settings, crie
-> outro, coloque no `token.txt` e publique uma versão nova. As instalações
-> antigas param de atualizar e precisam receber um zip novo.
+> Antes de substituir os arquivos, copie a pasta atual para outro lugar se
+> quiser poder voltar atrás.
 
 ## 5. Importar os pedidos do Theone
 

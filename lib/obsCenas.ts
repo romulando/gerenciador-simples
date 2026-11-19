@@ -1,6 +1,6 @@
 // Controle de cenas do OBS (obs-websocket, porta 4455) integrado ao GSI do Dota 2.
 // Portado do Dota 2 Observer: Menu/Draft/Jogando automáticos + modo Descanso.
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 // Variante JSON do obs-websocket-js: compatível com qualquer OBS (a msgpack
 // exigiria suporte a MessagePack no servidor).
 import OBSWebSocket from 'obs-websocket-js/json';
@@ -49,14 +49,14 @@ const TRANSICAO_FALLBACK_EXTRA_MS = 1200;
 // ─── Config (tabela config) ────────────────────────────────────────────────
 // Helpers locais para não criar dependência circular com lib/acompanhamento.
 
-function lerConfig(db: Database.Database, chave: string): string | null {
+function lerConfig(db: DatabaseSync, chave: string): string | null {
   const row = db.prepare('SELECT valor FROM config WHERE chave = ?').get(chave) as
     | { valor: string }
     | undefined;
   return row ? row.valor : null;
 }
 
-function gravarConfig(db: Database.Database, chave: string, valor: string): void {
+function gravarConfig(db: DatabaseSync, chave: string, valor: string): void {
   db.prepare(
     `INSERT INTO config (chave, valor) VALUES (?, ?)
      ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor`
@@ -65,7 +65,7 @@ function gravarConfig(db: Database.Database, chave: string, valor: string): void
 
 // Lê só o necessário da transição de fogo (ativa + duração) direto do config,
 // sem importar lib/overlay (evita dependência circular).
-function lerFogo(db: Database.Database): { ativo: boolean; duracaoMs: number } {
+function lerFogo(db: DatabaseSync): { ativo: boolean; duracaoMs: number } {
   const bruto = lerConfig(db, CHAVE_TRANSICAO_FOGO);
   if (!bruto) return { ativo: false, duracaoMs: FOGO_DURACAO_DEFAULT_MS };
   try {
@@ -81,7 +81,7 @@ function lerFogo(db: Database.Database): { ativo: boolean; duracaoMs: number } {
   }
 }
 
-export function getObsNomes(db: Database.Database): NomesCenas {
+export function getObsNomes(db: DatabaseSync): NomesCenas {
   const bruto = lerConfig(db, CHAVE_NOMES);
   if (!bruto) return { ...CENAS_DEFAULT };
   try {
@@ -97,7 +97,7 @@ export function getObsNomes(db: Database.Database): NomesCenas {
   }
 }
 
-export function setObsNomes(db: Database.Database, nomes: Partial<Record<EstadoCena, unknown>>): NomesCenas {
+export function setObsNomes(db: DatabaseSync, nomes: Partial<Record<EstadoCena, unknown>>): NomesCenas {
   const atuais = getObsNomes(db);
   const novos: NomesCenas = {
     menu: String(nomes.menu ?? '').trim() || atuais.menu,
@@ -109,7 +109,7 @@ export function setObsNomes(db: Database.Database, nomes: Partial<Record<EstadoC
   return novos;
 }
 
-export function getObsConexao(db: Database.Database): ObsConexao {
+export function getObsConexao(db: DatabaseSync): ObsConexao {
   const bruto = lerConfig(db, CHAVE_CONEXAO);
   if (!bruto) return { ...CONEXAO_DEFAULT };
   try {
@@ -128,7 +128,7 @@ export function getObsConexao(db: Database.Database): ObsConexao {
 }
 
 export function setObsConexao(
-  db: Database.Database,
+  db: DatabaseSync,
   parcial: { host?: unknown; port?: unknown; senha?: unknown }
 ): ObsConexao {
   const atual = getObsConexao(db);
@@ -145,11 +145,11 @@ export function setObsConexao(
   return nova;
 }
 
-export function getModoDescanso(db: Database.Database): boolean {
+export function getModoDescanso(db: DatabaseSync): boolean {
   return lerConfig(db, CHAVE_DESCANSO) === '1';
 }
 
-function setModoDescanso(db: Database.Database, ativo: boolean): void {
+function setModoDescanso(db: DatabaseSync, ativo: boolean): void {
   gravarConfig(db, CHAVE_DESCANSO, ativo ? '1' : '0');
 }
 
@@ -221,7 +221,7 @@ export function getUltimoEstadoObs(): EstadoCena | null {
 
 // Cena que o painel deve acender: já reflete o destino de uma transição
 // anunciada, mesmo antes de o OBS trocar de fato.
-export function getEstadoExibicao(db: Database.Database): EstadoCena | null {
+export function getEstadoExibicao(db: DatabaseSync): EstadoCena | null {
   const s = estado();
   return s.transicao?.destino ?? resolverEstadoAtual(db);
 }
@@ -233,7 +233,7 @@ export function getTransicaoPendente(): TransicaoPendente | null {
 // Atualiza a cena atual e mantém o modo Descanso alinhado à cena real do OBS:
 // ligado apenas quando a cena atual é a cena de Descanso configurada, e
 // desligado assim que o OBS sai dela (por clique, atalho ou mudança manual).
-function sincronizarCenaAtual(db: Database.Database, cena: string | null): void {
+function sincronizarCenaAtual(db: DatabaseSync, cena: string | null): void {
   const s = estado();
   s.cenaAtual = cena || null;
   if (!cena) return;
@@ -250,7 +250,7 @@ export function getCenaAtualObs(): string | null {
   return estado().cenaAtual;
 }
 
-export function resolverEstadoAtual(db: Database.Database): EstadoCena | null {
+export function resolverEstadoAtual(db: DatabaseSync): EstadoCena | null {
   const s = estado();
   if (s.cenaAtual) {
     const nomes = getObsNomes(db);
@@ -292,7 +292,7 @@ export function desconectar(): void {
 }
 
 // Conecta (ou reconecta) no OBS respeitando o intervalo de retry.
-export async function garantirConexao(db: Database.Database): Promise<boolean> {
+export async function garantirConexao(db: DatabaseSync): Promise<boolean> {
   const s = estado();
   if (s.conectado && s.client) return true;
   if (s.conectando) return false;
@@ -339,7 +339,7 @@ export interface StatusObs {
   erro: string;
 }
 
-export async function statusObs(db: Database.Database): Promise<StatusObs> {
+export async function statusObs(db: DatabaseSync): Promise<StatusObs> {
   const s = estado();
   const conectado = await garantirConexao(db);
   if (!conectado || !s.client) {
@@ -372,7 +372,7 @@ interface ResultadoTroca {
   ignorada?: boolean;
 }
 
-async function trocarCena(db: Database.Database, nome: string): Promise<ResultadoTroca> {
+async function trocarCena(db: DatabaseSync, nome: string): Promise<ResultadoTroca> {
   const s = estado();
   const conectado = await garantirConexao(db);
   if (!conectado || !s.client) {
@@ -390,7 +390,7 @@ async function trocarCena(db: Database.Database, nome: string): Promise<Resultad
 
 // Anuncia a troca para a overlay (que toca o fogo) sem mexer no OBS ainda.
 function criarTransicaoPendente(
-  db: Database.Database,
+  db: DatabaseSync,
   destino: EstadoCena,
   origem: 'manual' | 'auto'
 ): TransicaoPendente {
@@ -420,7 +420,7 @@ function criarTransicaoPendente(
 // Executa a troca anunciada (confirmação da overlay ou fallback do timer).
 // Idempotente: a primeira confirmação vence e as demais são ignoradas.
 async function concluirTransicao(
-  db: Database.Database,
+  db: DatabaseSync,
   seq: number,
   fallback: boolean
 ): Promise<ResultadoTroca> {
@@ -457,7 +457,7 @@ async function concluirTransicao(
 
 // Chamada pela overlay no instante em que o fogo cobre a tela.
 export async function confirmarTransicao(
-  db: Database.Database,
+  db: DatabaseSync,
   seq: number
 ): Promise<ResultadoTroca> {
   return concluirTransicao(db, seq, false);
@@ -465,7 +465,7 @@ export async function confirmarTransicao(
 
 // Troca manual (botões Menu/Draft/Jogando/Descanso).
 export async function forcarEstado(
-  db: Database.Database,
+  db: DatabaseSync,
   alvo: EstadoCena
 ): Promise<ResultadoTroca> {
   const s = estado();
@@ -532,7 +532,7 @@ function mapearEstadoGsi(gameState: string): EstadoCena | null {
   return null;
 }
 
-async function processarTransicao(db: Database.Database, alvo: EstadoCena): Promise<void> {
+async function processarTransicao(db: DatabaseSync, alvo: EstadoCena): Promise<void> {
   const s = estado();
   const modoDescanso = getModoDescanso(db);
 
@@ -576,7 +576,7 @@ async function processarTransicao(db: Database.Database, alvo: EstadoCena): Prom
 
 // Chamado a cada payload do GSI (fire-and-forget; nunca derruba o GSI).
 // gameState vazio também é um sinal válido: significa "sem partida" (menu).
-export function aoEstadoGsi(db: Database.Database, gameState: string): void {
+export function aoEstadoGsi(db: DatabaseSync, gameState: string): void {
   const alvo = mapearEstadoGsi(gameState);
   if (!alvo) return;
   void processarTransicao(db, alvo).catch(() => {});

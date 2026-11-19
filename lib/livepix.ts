@@ -3,7 +3,7 @@
 // overlay. O Client Secret, o token e o cache ficam no banco local (SQLite sem
 // criptografia, como o restante do projeto) e nunca são devolvidos pelas APIs
 // do painel.
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import { getConfigValor, setConfigValor } from './config';
 import type { LivepixStatusOverlay } from '../components/stream-overlay/common';
 
@@ -65,23 +65,23 @@ async function fetchComTimeout(url: string, init?: RequestInit): Promise<Respons
   }
 }
 
-function texto(db: Database.Database, chave: string): string {
+function texto(db: DatabaseSync, chave: string): string {
   return (getConfigValor(db, chave) ?? '').trim();
 }
 
-export function getLivepixClientId(db: Database.Database): string {
+export function getLivepixClientId(db: DatabaseSync): string {
   return texto(db, CHAVE_CLIENT_ID);
 }
 
-function getLivepixClientSecret(db: Database.Database): string {
+function getLivepixClientSecret(db: DatabaseSync): string {
   return texto(db, CHAVE_CLIENT_SECRET);
 }
 
-function definirErro(db: Database.Database, mensagem: string): void {
+function definirErro(db: DatabaseSync, mensagem: string): void {
   setConfigValor(db, CHAVE_ERRO, mensagem.slice(0, 300));
 }
 
-export function getLivepixStatus(db: Database.Database): LivepixStatusOverlay {
+export function getLivepixStatus(db: DatabaseSync): LivepixStatusOverlay {
   const clientId = getLivepixClientId(db);
   return {
     clientId,
@@ -99,7 +99,7 @@ export function getLivepixStatus(db: Database.Database): LivepixStatusOverlay {
 // Salva o Client ID/Secret do app criado no painel da LivePix. Secret vazio
 // mantém o que já estava salvo. Trocar o Client ID invalida o token antigo.
 export function setLivepixCredenciais(
-  db: Database.Database,
+  db: DatabaseSync,
   clientId: unknown,
   clientSecret: unknown
 ): LivepixStatusOverlay {
@@ -114,7 +114,7 @@ export function setLivepixCredenciais(
   return getLivepixStatus(db);
 }
 
-export function limparTokensLivepix(db: Database.Database): void {
+export function limparTokensLivepix(db: DatabaseSync): void {
   for (const chave of [
     CHAVE_ACCESS_TOKEN,
     CHAVE_TOKEN_EXPIRA,
@@ -128,7 +128,7 @@ export function limparTokensLivepix(db: Database.Database): void {
 }
 
 // Token de acesso via client_credentials, reaproveitado até perto de expirar.
-async function obterTokenLivepix(db: Database.Database): Promise<string | null> {
+async function obterTokenLivepix(db: DatabaseSync): Promise<string | null> {
   const clientId = getLivepixClientId(db);
   const clientSecret = getLivepixClientSecret(db);
   if (!clientId || !clientSecret) return null;
@@ -184,7 +184,7 @@ async function obterTokenLivepix(db: Database.Database): Promise<string | null> 
 
 // Testa as credenciais consultando a conta autenticada (usado ao salvar).
 export async function testarConexaoLivepix(
-  db: Database.Database
+  db: DatabaseSync
 ): Promise<{ ok: boolean; mensagem: string }> {
   if (!getLivepixClientId(db) || !getLivepixClientSecret(db)) {
     return { ok: false, mensagem: 'Salve o Client ID e o Client Secret antes de testar.' };
@@ -233,7 +233,7 @@ interface CacheTotal {
   erro: boolean;
 }
 
-function lerCache(db: Database.Database): CacheTotal | null {
+function lerCache(db: DatabaseSync): CacheTotal | null {
   const bruto = getConfigValor(db, CHAVE_CACHE_TOTAL);
   if (!bruto) return null;
   try {
@@ -249,7 +249,7 @@ function lerCache(db: Database.Database): CacheTotal | null {
   }
 }
 
-function gravarCache(db: Database.Database, totalCentavos: number | null, erro: boolean): void {
+function gravarCache(db: DatabaseSync, totalCentavos: number | null, erro: boolean): void {
   setConfigValor(
     db,
     CHAVE_CACHE_TOTAL,
@@ -390,7 +390,7 @@ function inicioDoMes(): Date {
 let emAndamento: Promise<{ total: number | null; erro: boolean }> | null = null;
 
 function iniciarAtualizacaoTotal(
-  db: Database.Database,
+  db: DatabaseSync,
   cache: CacheTotal | null
 ): Promise<{ total: number | null; erro: boolean }> {
   if (emAndamento) return emAndamento;
@@ -405,7 +405,7 @@ function iniciarAtualizacaoTotal(
 }
 
 export async function obterTotalMesLivepix(
-  db: Database.Database
+  db: DatabaseSync
 ): Promise<{ total: number | null; erro: boolean }> {
   const cache = lerCache(db);
   if (cache) {
@@ -424,7 +424,7 @@ function emReais(centavos: number | null): number | null {
 }
 
 async function buscarTotalRemoto(
-  db: Database.Database,
+  db: DatabaseSync,
   cache: CacheTotal | null
 ): Promise<{ total: number | null; erro: boolean }> {
   const token = await obterTokenLivepix(db);

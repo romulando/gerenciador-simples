@@ -1,7 +1,7 @@
 // Vínculo entre o tracking ID do pedido e o account_id do Dota 2.
 // Guardado no banco local (overlay.db) para o GSI (sem sessão/Supabase) usar
 // na atribuição automática das partidas.
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import { agoraLocal } from './helpers';
 import { normalizarIdDota } from './contaDota';
 
@@ -15,10 +15,10 @@ function trackingNormalizado(valor: unknown): string {
   return String(valor ?? '').trim().toUpperCase();
 }
 
-export function listarContasPedidos(db: Database.Database): ContaPedido[] {
+export function listarContasPedidos(db: DatabaseSync): ContaPedido[] {
   const linhas = db
     .prepare('SELECT trackingId, accountId, atualizadoEm FROM pedido_contas ORDER BY trackingId')
-    .all() as ContaPedido[];
+    .all() as unknown as ContaPedido[];
   return linhas.map((linha) => ({
     trackingId: trackingNormalizado(linha.trackingId),
     accountId: String(linha.accountId ?? '').replace(/\D/g, ''),
@@ -26,7 +26,7 @@ export function listarContasPedidos(db: Database.Database): ContaPedido[] {
   }));
 }
 
-export function getContaPedido(db: Database.Database, trackingId: unknown): string {
+export function getContaPedido(db: DatabaseSync, trackingId: unknown): string {
   const id = trackingNormalizado(trackingId);
   if (!id) return '';
   const linha = db
@@ -37,7 +37,7 @@ export function getContaPedido(db: Database.Database, trackingId: unknown): stri
 
 // Salva (ou remove, com conta vazia) o vínculo e devolve a conta normalizada.
 export function setContaPedido(
-  db: Database.Database,
+  db: DatabaseSync,
   trackingId: unknown,
   accountId: unknown
 ): string {
@@ -74,7 +74,7 @@ export function setContaPedido(
 // Prioriza o pedido selecionado na overlay; sem ele, usa a conta quando existe
 // um único vínculo cadastrado (evita atribuição errada em caso de ambiguidade).
 export function pedidoDaPartida(
-  db: Database.Database,
+  db: DatabaseSync,
   accountId: unknown,
   selecionado?: string | null
 ): string {

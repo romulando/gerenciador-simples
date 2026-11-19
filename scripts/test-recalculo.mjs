@@ -3,7 +3,7 @@
 //   node scripts/test-recalculo.mjs --pedido 32 --url http://localhost:4000
 import fs from 'fs';
 import path from 'path';
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 
 function lerEnv(arquivo) {
   const valores = {};
@@ -30,8 +30,8 @@ if (!secret) {
   process.exit(1);
 }
 
-const db = new Database(path.join(raiz, '..', 'gerenciador-pedidos', 'gerenciador.db'), {
-  readonly: true,
+const db = new DatabaseSync(path.join(raiz, '..', 'gerenciador-pedidos', 'gerenciador.db'), {
+  readOnly: true,
 });
 const p = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(pedidoId);
 if (!p) {

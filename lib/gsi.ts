@@ -1,6 +1,6 @@
 // GSI do Dota 2: estado ao vivo + partidas locais para W/L e cenas do OBS.
 import crypto from 'crypto';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import { getConfigValor, setConfigValor } from './config';
 import { getDb } from './db';
 import { agoraLocal } from './helpers';
@@ -67,7 +67,7 @@ const GSI_ONLINE_JANELA_MS = 40_000;
 const GSI_SILENCIO_MENU_MS = 60_000;
 const GSI_WATCHDOG_INTERVALO_MS = 15_000;
 
-export function getGsiToken(db: Database.Database): string {
+export function getGsiToken(db: DatabaseSync): string {
   const existente = (getConfigValor(db, 'gsi_token') ?? '').trim();
   if (/^[a-f0-9]{16,64}$/i.test(existente)) return existente;
   const token = crypto.randomBytes(16).toString('hex');
@@ -167,7 +167,7 @@ interface DadosPartida {
 }
 
 function salvarPartida(
-  db: Database.Database,
+  db: DatabaseSync,
   dados: DadosPartida
 ): { id: number; matchId: string | null; resultado: string; hero: string; nova: boolean } {
   const matchId = dados.matchId ? String(dados.matchId) : null;
