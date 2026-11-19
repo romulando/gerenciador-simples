@@ -1,0 +1,9 @@
+node_modules
+.next
+.env.local
+overlay.db
+overlay.db-shm
+overlay.db-wal
+public/uploads
+tsconfig.tsbuildinfo
+.backup-antigo

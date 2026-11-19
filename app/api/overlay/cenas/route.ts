@@ -1,0 +1,85 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getDb } from '@/lib/db';
+import {
+  forcarEstado,
+  getEstadoExibicao,
+  getModoDescanso,
+  getObsConexao,
+  getObsNomes,
+  setObsConexao,
+  setObsNomes,
+  statusObs,
+  type EstadoCena,
+} from '@/lib/obsCenas';
+
+const ESTADOS_VALIDOS: EstadoCena[] = ['menu', 'draft', 'game', 'descanso'];
+
+// GET /api/overlay/cenas -> status do OBS + nomes/config das cenas
+export async function GET() {
+  const db = getDb();
+  const status = await statusObs(db);
+  const conexao = getObsConexao(db);
+  return NextResponse.json(
+    {
+      ...status,
+      nomes: getObsNomes(db),
+      modoDescanso: getModoDescanso(db),
+      ultimoEstado: getEstadoExibicao(db),
+      conexao: {
+        host: conexao.host,
+        port: conexao.port,
+        senhaDefinida: Boolean(conexao.senha),
+      },
+    },
+    { headers: { 'Cache-Control': 'no-store' } }
+  );
+}
+
+// PUT /api/overlay/cenas { nomes?, conexao? } -> salva nomes das cenas e/ou conexão
+export async function PUT(req: NextRequest) {
+  const db = getDb();
+  const b = await req.json().catch(() => ({}));
+
+  if (b.nomes && typeof b.nomes === 'object') {
+    setObsNomes(db, b.nomes as Record<EstadoCena, unknown>);
+  }
+  if (b.conexao && typeof b.conexao === 'object') {
+    setObsConexao(db, b.conexao as { host?: unknown; port?: unknown; senha?: unknown });
+  }
+
+  const conexao = getObsConexao(db);
+  return NextResponse.json({
+    ok: true,
+    nomes: getObsNomes(db),
+    conexao: {
+      host: conexao.host,
+      port: conexao.port,
+      senhaDefinida: Boolean(conexao.senha),
+    },
+  });
+}
+
+// POST /api/overlay/cenas { estado } -> força a troca de cena (Menu/Draft/Jogando/Descanso)
+export async function POST(req: NextRequest) {
+  const db = getDb();
+  const b = await req.json().catch(() => ({}));
+  const estado = String(b.estado ?? '') as EstadoCena;
+
+  if (!ESTADOS_VALIDOS.includes(estado)) {
+    return NextResponse.json({ error: 'Estado inválido' }, { status: 400 });
+  }
+
+  const res = await forcarEstado(db, estado);
+  if (!res.ok) {
+    return NextResponse.json(
+      { error: res.erro || 'Falha ao trocar a cena no OBS' },
+      { status: 502 }
+    );
+  }
+  return NextResponse.json({
+    ok: true,
+    estado,
+    cenaAtual: res.cenaAtual,
+    pendente: Boolean(res.pendente),
+  });
+}
