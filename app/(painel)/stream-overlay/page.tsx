@@ -354,23 +354,6 @@ export default function StreamOverlayPage() {
               )}
             </div>
 
-            <select
-              value={selecionado}
-              onChange={(e) => {
-                const trackingId = e.target.value;
-                const escolhido = pedidos.find((p) => p.tracking_id === trackingId);
-                void selecionar(trackingId, escolhido?.tipo_servico);
-              }}
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-white/30"
-            >
-              <option value="">— Nenhum pedido selecionado —</option>
-              {pedidos.map((p) => (
-                <option key={p.id} value={p.tracking_id}>
-                  {p.tracking_id} · {TIPOS_SERVICO[p.tipo_servico] ?? p.tipo_servico} · {p.estado}
-                </option>
-              ))}
-            </select>
-
             {pedidoCompleto && (
               <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
                 {ehServicoDuo(pedidoCompleto.tipo_servico) ? (
@@ -399,8 +382,8 @@ export default function StreamOverlayPage() {
             {contaDiferente && (
               <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-amber-200">
                 A conta logada ({contaDetectada}) não é a conta deste pedido (
-                {contaSelecionada}). Se for duo/grupo, o registro usa o pedido selecionado; caso
-                contrário, selecione o pedido correto.
+                {contaSelecionada}). O vínculo das partidas solo usa a conta do Dota 2; para
+                duo/grupo vale o pedido exibido.
               </p>
             )}
 
@@ -456,8 +439,9 @@ export default function StreamOverlayPage() {
               <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-dashed border-white/15 bg-white/[0.02] px-3 py-3">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#e8a020]" />
                 <p className="text-sm leading-relaxed text-gray-400">
-                  Selecione um pedido acima. Se houver só um em andamento, ele é selecionado
-                  automaticamente. A overlay atualiza sozinha.
+                  Aguardando o GSI detectar a conta do Dota 2. Quando ela estiver vinculada a um
+                  pedido em andamento, o pedido aparece aqui automaticamente. A overlay atualiza
+                  sozinha.
                 </p>
               </div>
             )}
