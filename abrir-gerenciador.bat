@@ -8,18 +8,18 @@ rem
 rem  Antes de abrir, atualiza o codigo pelo Git:
 rem    - se a pasta ja e um clone (tem .git), roda "git pull --ff-only";
 rem    - se ainda nao e clone, baixa o repositorio e transforma a pasta em
-rem      clone, preservando .env.local, overlay.db, node_modules e uploads;
+rem      clone, preservando overlay.db, node_modules e uploads;
 rem    - se a pasta estiver vazia (so com este .bat e os dados locais), baixa
-rem      o projeto do zero e cria o .env.local a partir do exemplo.
+rem      o projeto do zero, incluindo o .env.local versionado.
 rem
 rem  O repositorio e privado. O acesso usa um token fine-grained
 rem  (Contents: Read-only) embutido neste .bat; nao precisa de conta no GitHub.
 rem  Crie o token com validade de 1 ano e anote a data para renovar.
 rem  Se o Git nao estiver instalado, o script oferece instalar pelo winget.
 rem
-rem  O arquivo real (com o token) nao e versionado; o modelo versionado e
-rem  "abrir-gerenciador.bat.example". Este .bat roda a partir de uma copia em
-rem  TEMP para nao ser afetado por atualizacoes do repositorio em execucao.
+rem  Este .bat e o .env.local sao versionados no repositorio. O .bat roda a
+rem  partir de uma copia em TEMP para poder se atualizar sem interromper a
+rem  execucao. A janela do servidor mostra o resultado da atualizacao.
 rem ===========================================================================
 
 if /i "%~1"=="/dentro" goto :corpo
@@ -50,8 +50,8 @@ set "PORTA=4000"
 set "URL=http://localhost:%PORTA%"
 
 rem Token fine-grained do GitHub (Contents: Read-only neste repositorio).
-rem Validade sugerida: 1 ano. Substitua SEU_TOKEN_AQUI pelo token real.
-rem Este arquivo nao e versionado; o modelo fica em .example.
+rem Validade sugerida: 1 ano. Anote a data para renovar.
+rem Este token fica no repositorio privado para os clientes baixarem o codigo.
 set "GIT_TOKEN=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"
 if not defined GIT_TOKEN set "GIT_TOKEN=SEU_TOKEN_AQUI"
 
@@ -69,6 +69,15 @@ set "GCM_INTERACTIVE=Never"
 set "GIT="
 set "ATUALIZOU="
 set "INSTALAR="
+set "MIGROU="
+set "VERSAO_LOCAL="
+set "TEM_ATUALIZACAO="
+set "FALHA_CHECAGEM="
+set "MOTIVO_GIT="
+set "STATUS_VERSAO=Versao NAO VERIFICADA"
+set "STATUS_DETALHE="
+set "STATUS_AVISO="
+set "STATUS_EXTRA="
 
 echo ==========================================
 echo   Gerenciador Simples - Theone
@@ -78,9 +87,10 @@ echo.
 
 if /i "%GIT_TOKEN%"=="SEU_TOKEN_AQUI" (
   echo AVISO: o token do GitHub nao foi configurado neste .bat.
-  echo Enquanto o repositorio for publico, o download funciona sem token.
-  echo Depois que ele ficar privado, substitua SEU_TOKEN_AQUI pelo token fine-grained.
+  echo O repositorio e privado, entao o download nao vai funcionar.
+  echo Substitua SEU_TOKEN_AQUI pelo token fine-grained.
   echo.
+  set "STATUS_AVISO=AVISO: token do GitHub nao configurado."
 )
 
 rem ---- 1) Node.js instalado? ----
@@ -125,6 +135,8 @@ echo.
 echo Sem o Git, o gerenciador so abre se o projeto ja estiver nesta pasta.
 echo Para baixar e atualizar, instale em https://git-scm.com/download/win
 echo e abra este atalho de novo.
+set "STATUS_VERSAO=Versao NAO VERIFICADA: Git nao encontrado"
+set "STATUS_DETALHE=Instale o Git para atualizar automaticamente."
 goto :apos_git
 
 :git_ok
@@ -144,6 +156,7 @@ if errorlevel 1 goto :fim
 if not exist "package.json" goto :sem_projeto
 if not exist "app\layout.tsx" goto :sem_projeto
 if not exist "lib\overlay.ts" goto :sem_projeto
+if not exist ".env.local" goto :sem_env
 
 if not defined ATUALIZOU goto :sem_limpeza
 echo.
@@ -171,19 +184,13 @@ call npm install
 if not "%errorlevel%"=="0" goto :erro_instalacao
 echo.
 echo Dependencias instaladas com sucesso.
+set "STATUS_EXTRA=Dependencias reinstaladas."
 
 :rodar
-if not exist ".env.local" (
-  if exist ".env.local.example" (
-    echo.
-    echo AVISO: .env.local nao existe.
-    echo Copie .env.local.example para .env.local e preencha as variaveis.
-  )
-)
-
 echo.
+call :preparar_status
 echo Iniciando o servidor de desenvolvimento na porta %PORTA%...
-start "Gerenciador Simples - Dev (porta %PORTA%)" cmd /k "npm run dev"
+start "Gerenciador Simples - Dev (porta %PORTA%)" cmd /k ""%TEMP%\gs-dev.bat""
 
 echo Aguardando o servidor responder em %URL% ...
 set /a tentativas=0
@@ -209,8 +216,17 @@ echo.
 echo Abrindo o navegador...
 start "" "%URL%"
 if defined GIT call :checar_atualizacao_rodando
+if defined TEM_ATUALIZACAO goto :ja_rodando_espera
+if defined FALHA_CHECAGEM goto :ja_rodando_espera
+echo.
 echo Esta janela fecha em alguns segundos.
 ping -n 5 127.0.0.1 >nul
+goto :fim
+
+:ja_rodando_espera
+echo.
+echo Pressione uma tecla para fechar esta janela.
+pause >nul
 goto :fim
 
 :outro_processo
@@ -226,6 +242,9 @@ goto :fim
 echo.
 echo O servidor demorou para responder.
 echo Abra manualmente no navegador: %URL%
+echo.
+echo Pressione uma tecla para fechar esta janela.
+pause >nul
 goto :fim
 
 :sem_node
@@ -273,8 +292,43 @@ echo Confira se o Git esta instalado e veja as mensagens acima.
 pause
 goto :fim
 
+:sem_env
+echo.
+echo ERRO: o arquivo .env.local nao foi encontrado.
+echo Ele e versionado e deveria ter vindo junto com o projeto.
+echo.
+echo Feche esta janela, apague a pasta ".git" e abra o atalho de novo
+echo para baixar o projeto completo.
+pause
+goto :fim
+
 :fim
 endlocal
+exit /b 0
+
+rem ---------------------------------------------------------------------------
+rem preparar_status: monta o texto e a janela do servidor. A janela fica
+rem aberta com os logs do Next e mostra o resultado da atualizacao no topo.
+rem ---------------------------------------------------------------------------
+:preparar_status
+set "GS_STATUS=%TEMP%\gs-status.txt"
+> "%GS_STATUS%" echo ==========================================
+>>"%GS_STATUS%" echo   Gerenciador Simples - Theone
+>>"%GS_STATUS%" echo   Porta %PORTA% - http://localhost:%PORTA%
+>>"%GS_STATUS%" echo ==========================================
+>>"%GS_STATUS%" echo.
+>>"%GS_STATUS%" echo %STATUS_VERSAO%
+if defined STATUS_DETALHE >>"%GS_STATUS%" echo %STATUS_DETALHE%
+if defined STATUS_AVISO >>"%GS_STATUS%" echo %STATUS_AVISO%
+if defined STATUS_EXTRA >>"%GS_STATUS%" echo %STATUS_EXTRA%
+>>"%GS_STATUS%" echo.
+>>"%GS_STATUS%" echo Iniciando o servidor...
+>>"%GS_STATUS%" echo.
+
+> "%TEMP%\gs-dev.bat" echo @echo off
+>>"%TEMP%\gs-dev.bat" echo title Gerenciador Simples - Dev (porta %PORTA%)
+>>"%TEMP%\gs-dev.bat" echo type "%%TEMP%%\gs-status.txt"
+>>"%TEMP%\gs-dev.bat" echo npm run dev
 exit /b 0
 
 rem ---------------------------------------------------------------------------
@@ -301,6 +355,7 @@ rem os motivos mais comuns (token rejeitado, sem acesso, sem internet,
 rem alteracoes locais). Apaga o log no final.
 rem ---------------------------------------------------------------------------
 :diagnosticar_git
+set "MOTIVO_GIT="
 if not exist "%LOG_GIT%" exit /b 0
 
 echo.
@@ -318,6 +373,7 @@ if not errorlevel 1 (
   echo MOTIVO PROVAVEL: o GitHub rejeitou o token.
   echo Ele pode estar invalido, expirado ou revogado.
   echo Gere um novo token fine-grained ^(Contents: Read-only^) e substitua no .bat.
+  set "MOTIVO_GIT=Motivo: token do GitHub rejeitado ou expirado."
   goto :diag_fim
 )
 
@@ -328,6 +384,7 @@ if not errorlevel 1 (
   echo O token pode nao ter acesso a este repositorio, ou a URL esta errada.
   echo Confira no GitHub se o token tem o repo "gerenciador-simples"
   echo e a permissao Contents: Read-only.
+  set "MOTIVO_GIT=Motivo: repositorio nao encontrado ou sem acesso."
   goto :diag_fim
 )
 
@@ -336,6 +393,7 @@ if not errorlevel 1 (
   echo.
   echo MOTIVO PROVAVEL: sem conexao com o GitHub.
   echo Verifique a internet, o proxy ou o firewall e tente de novo.
+  set "MOTIVO_GIT=Motivo: sem conexao com o GitHub."
   goto :diag_fim
 )
 
@@ -345,11 +403,13 @@ if not errorlevel 1 (
   echo MOTIVO PROVAVEL: ha alteracoes locais ou o historico divergiu.
   echo Feche com "fechar-gerenciador.bat" e tente de novo. Se persistir,
   echo faca backup da pasta e apague a pasta .git para baixar de novo.
+  set "MOTIVO_GIT=Motivo: alteracoes locais ou historico divergido."
   goto :diag_fim
 )
 
 echo.
 echo MOTIVO: veja a mensagem do Git acima.
+set "MOTIVO_GIT=Motivo: falha ao acessar o repositorio."
 
 :diag_fim
 del /q "%LOG_GIT%" >nul 2>nul
@@ -380,11 +440,21 @@ rem atualizar: pula quando o Git nao esta disponivel. Com .git usa pull;
 rem sem .git prepara a pasta como clone (uma unica vez).
 rem ---------------------------------------------------------------------------
 :atualizar
-if defined SEM_ATUALIZACAO exit /b 0
-if not defined GIT exit /b 0
+if defined SEM_ATUALIZACAO goto :atualizar_sem_copia
+if not defined GIT goto :atualizar_sem_git
 if exist ".git" if exist "package.json" goto :atualizar_pull
 if exist "package.json" goto :adotar_repo
 goto :bootstrap_repo
+
+:atualizar_sem_copia
+set "STATUS_VERSAO=Versao NAO VERIFICADA: atualizacao automatica indisponivel"
+set "STATUS_DETALHE=Nao consegui preparar a copia temporaria do atalho."
+exit /b 0
+
+:atualizar_sem_git
+set "STATUS_VERSAO=Versao NAO VERIFICADA: Git nao encontrado"
+set "STATUS_DETALHE=Instale o Git para atualizar automaticamente."
+exit /b 0
 
 :atualizar_pull
 echo.
@@ -399,17 +469,23 @@ set /p VELHO=<"%ARQ_GIT%"
 set "VELHO_CURTO="
 "%GIT%" -C "%CD%" rev-parse --short HEAD > "%ARQ_GIT%" 2>nul
 set /p VELHO_CURTO=<"%ARQ_GIT%"
+if not defined VELHO_CURTO set "VELHO_CURTO=local"
 
 set "GIT_TERMINAL_PROMPT=0"
-del /q "%LOG_GIT%" >nul 2>nul
-"%GIT%" -C "%CD%" -c credential.helper= -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 pull --ff-only --quiet "%REPO%" main > "%LOG_GIT%" 2>&1
-if errorlevel 1 (
-  echo.
-  echo AVISO: nao foi possivel atualizar agora.
-  call :diagnosticar_git
-  echo Abrindo a versao atual.
-  exit /b 0
-)
+call :fazer_pull
+if not errorlevel 1 goto :atualizar_pull_ok
+
+findstr /i /c:"untracked working tree files" /c:"would be overwritten" "%LOG_GIT%" >nul 2>nul
+if errorlevel 1 goto :atualizar_pull_falhou
+call :migrar_nao_rastreados
+if not defined MIGROU goto :atualizar_pull_falhou
+call :fazer_pull
+if not errorlevel 1 goto :atualizar_pull_ok
+call :restaurar_migracao
+goto :atualizar_pull_falhou
+
+:atualizar_pull_ok
+call :limpar_migracao
 del /q "%LOG_GIT%" >nul 2>nul
 
 set "NOVO="
@@ -418,13 +494,12 @@ set /p NOVO=<"%ARQ_GIT%"
 set "NOVO_CURTO="
 "%GIT%" -C "%CD%" rev-parse --short HEAD > "%ARQ_GIT%" 2>nul
 set /p NOVO_CURTO=<"%ARQ_GIT%"
+if not defined NOVO_CURTO set "NOVO_CURTO=local"
 
-if /i "%VELHO%"=="%NOVO%" (
-  echo Ja esta na ultima versao ^(%NOVO_CURTO%^).
-  exit /b 0
-)
+if /i "%VELHO%"=="%NOVO%" goto :atualizar_pull_atual
 
 echo Atualizado: %VELHO_CURTO% -^> %NOVO_CURTO%
+set "STATUS_VERSAO=Versao ATUALIZADA: %VELHO_CURTO% para %NOVO_CURTO%"
 set "ATUALIZOU=1"
 
 "%GIT%" -C "%CD%" diff --name-only "%VELHO%" "%NOVO%" > "%TEMP%\gs-diff.txt" 2>nul
@@ -433,9 +508,68 @@ if not errorlevel 1 set "INSTALAR=1"
 del /q "%TEMP%\gs-diff.txt" >nul 2>nul
 exit /b 0
 
+:atualizar_pull_atual
+echo Ja esta na ultima versao ^(%NOVO_CURTO%^).
+set "STATUS_VERSAO=Versao ATUAL: %NOVO_CURTO% - igual ao GitHub"
+exit /b 0
+
+:atualizar_pull_falhou
+echo.
+echo AVISO: nao foi possivel atualizar agora.
+call :diagnosticar_git
+set "STATUS_VERSAO=Versao DESATUALIZADA: nao foi possivel atualizar"
+set "STATUS_DETALHE=Usando a versao local %VELHO_CURTO%."
+if defined MOTIVO_GIT set "STATUS_DETALHE=%STATUS_DETALHE% %MOTIVO_GIT%"
+echo Abrindo a versao atual.
+exit /b 0
+
+rem ---------------------------------------------------------------------------
+rem fazer_pull: tenta o pull com o token. O log fica em %LOG_GIT% para o
+rem diagnosticar_git; o retorno e o errorlevel do Git.
+rem ---------------------------------------------------------------------------
+:fazer_pull
+del /q "%LOG_GIT%" >nul 2>nul
+"%GIT%" -C "%CD%" -c credential.helper= -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 pull --ff-only --quiet "%REPO%" main > "%LOG_GIT%" 2>&1
+exit /b %errorlevel%
+
+rem ---------------------------------------------------------------------------
+rem migrar_nao_rastreados: .env.local e este .bat passaram a ser versionados.
+rem Se uma pasta antiga tiver copias nao rastreadas, guarda em TEMP e remove
+rem para o pull conseguir criar a versao do GitHub.
+rem ---------------------------------------------------------------------------
+:migrar_nao_rastreados
+set "MIGROU="
+for %%F in (".env.local" "abrir-gerenciador.bat") do (
+  if exist "%%~F" (
+    "%GIT%" -C "%CD%" ls-files --error-unmatch "%%~F" >nul 2>nul
+    if errorlevel 1 (
+      move /y "%%~F" "%TEMP%\gs-%%~nxF.antes" >nul 2>nul
+      if not errorlevel 1 set "MIGROU=1"
+    )
+  )
+)
+exit /b 0
+
+rem ---------------------------------------------------------------------------
+rem restaurar_migracao: se o pull falhar depois da migracao, devolve os
+rem arquivos que foram movidos para TEMP.
+rem ---------------------------------------------------------------------------
+:restaurar_migracao
+if exist "%TEMP%\gs-.env.local.antes" if not exist ".env.local" copy /y "%TEMP%\gs-.env.local.antes" ".env.local" >nul 2>nul
+if exist "%TEMP%\gs-abrir-gerenciador.bat.antes" if not exist "abrir-gerenciador.bat" copy /y "%TEMP%\gs-abrir-gerenciador.bat.antes" "abrir-gerenciador.bat" >nul 2>nul
+exit /b 0
+
+rem ---------------------------------------------------------------------------
+rem limpar_migracao: remove as copias temporarias depois de um pull bem-sucedido.
+rem ---------------------------------------------------------------------------
+:limpar_migracao
+del /q "%TEMP%\gs-.env.local.antes" >nul 2>nul
+del /q "%TEMP%\gs-abrir-gerenciador.bat.antes" >nul 2>nul
+exit /b 0
+
 rem ---------------------------------------------------------------------------
 rem bootstrap_repo: pasta vazia ou so com dados locais. Baixa o projeto do
-rem zero, cria o .env.local a partir do exemplo e segue para o npm install.
+rem zero, incluindo o .env.local versionado, e segue para o npm install.
 rem ---------------------------------------------------------------------------
 :bootstrap_repo
 echo.
@@ -474,30 +608,24 @@ if not exist "%CLONE%\lib\overlay.ts" goto :bootstrap_invalido
 del /q "%LOG_GIT%" >nul 2>nul
 
 echo Copiando os arquivos...
-robocopy "%CLONE%" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local abrir-gerenciador.bat token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
+robocopy "%CLONE%" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 goto :bootstrap_falhou
 if not exist "package.json" goto :bootstrap_falhou
 if not exist "app\layout.tsx" goto :bootstrap_falhou
 if not exist "lib\overlay.ts" goto :bootstrap_falhou
 if not exist ".git\HEAD" goto :bootstrap_falhou
 
+set "ARQ_GIT=%TEMP%\gs-git.txt"
+set "NOVO_CURTO="
+"%GIT%" -C "%CD%" rev-parse --short HEAD > "%ARQ_GIT%" 2>nul
+set /p NOVO_CURTO=<"%ARQ_GIT%"
+if not defined NOVO_CURTO set "NOVO_CURTO=local"
+set "STATUS_VERSAO=Versao INSTALADA: %NOVO_CURTO% - baixada do GitHub"
 set "ATUALIZOU=1"
 set "INSTALAR=1"
-call :bootstrap_env
 if exist "%CLONE%" rd /s /q "%CLONE%" >nul 2>nul
 echo.
 echo Projeto baixado com sucesso.
-exit /b 0
-
-:bootstrap_env
-if exist ".env.local" exit /b 0
-if not exist ".env.local.example" exit /b 0
-copy /y ".env.local.example" ".env.local" >nul 2>nul
-echo.
-echo O arquivo .env.local foi criado a partir do exemplo.
-echo Preencha as variaveis do Supabase e salve.
-echo O Notepad vai abrir agora; feche-o para continuar.
-notepad ".env.local"
 exit /b 0
 
 :bootstrap_cancelado
@@ -547,9 +675,11 @@ if not exist "lib\overlay.ts" goto :adotar_nao_e
 
 echo Fazendo backup da versao atual em .backup-antigo...
 if exist ".backup-antigo" rd /s /q ".backup-antigo" >nul 2>nul
-robocopy "%CD%" "%CD%\.backup-antigo" /E /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.git" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local abrir-gerenciador.bat token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
+robocopy "%CD%" "%CD%\.backup-antigo" /E /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.git" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (
   echo AVISO: nao consegui fazer o backup. Nada foi alterado.
+  set "STATUS_VERSAO=Versao NAO VERIFICADA: nao foi possivel preparar a atualizacao"
+  set "STATUS_DETALHE=Nao consegui fazer o backup da pasta."
   exit /b 0
 )
 
@@ -563,6 +693,7 @@ if errorlevel 1 (
   echo.
   echo AVISO: nao consegui baixar a versao nova. Abrindo a versao atual.
   call :diagnosticar_git
+  set "STATUS_VERSAO=Versao DESATUALIZADA: nao foi possivel baixar a atualizacao"
   goto :adotar_falhou
 )
 del /q "%LOG_GIT%" >nul 2>nul
@@ -575,12 +706,18 @@ taskkill /FI "WINDOWTITLE eq Gerenciador Simples - Dev*" /T /F >nul 2>nul
 ping -n 3 127.0.0.1 >nul
 
 for %%D in (app components lib) do if exist "%%D" rd /s /q "%%D" >nul 2>nul
-robocopy "%CLONE%" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local abrir-gerenciador.bat token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
+robocopy "%CLONE%" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 goto :adotar_restaurar
 if not exist "package.json" goto :adotar_restaurar
 if not exist "app\layout.tsx" goto :adotar_restaurar
 if not exist ".git\HEAD" goto :adotar_restaurar
 
+set "ARQ_GIT=%TEMP%\gs-git.txt"
+set "NOVO_CURTO="
+"%GIT%" -C "%CD%" rev-parse --short HEAD > "%ARQ_GIT%" 2>nul
+set /p NOVO_CURTO=<"%ARQ_GIT%"
+if not defined NOVO_CURTO set "NOVO_CURTO=local"
+set "STATUS_VERSAO=Versao ATUALIZADA: %NOVO_CURTO% - pasta preparada"
 set "ATUALIZOU=1"
 if not exist ".backup-antigo\package.json" set "INSTALAR=1"
 if exist ".backup-antigo\package.json" (
@@ -600,68 +737,92 @@ exit /b 0
 
 :adotar_invalido
 echo AVISO: o repositorio baixado nao parece valido. Abrindo a versao atual.
+set "MOTIVO_GIT=Motivo: repositorio baixado nao parece valido."
+set "STATUS_VERSAO=Versao DESATUALIZADA: repositorio baixado invalido"
 goto :adotar_falhou
 
 :adotar_restaurar
 echo.
 echo ERRO ao aplicar a atualizacao. Restaurando o backup...
 if exist ".git" rd /s /q ".git" >nul 2>nul
-robocopy "%CD%\.backup-antigo" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF .env.local abrir-gerenciador.bat token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
+robocopy "%CD%\.backup-antigo" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (
   echo.
   echo ATENCAO: a restauracao tambem falhou.
   echo Copie os arquivos de volta manualmente de:
   echo   %CD%\.backup-antigo
+  set "STATUS_VERSAO=Versao NAO VERIFICADA: falha ao atualizar e ao restaurar"
 ) else (
   echo Versao anterior restaurada.
+  set "STATUS_VERSAO=Versao ANTERIOR restaurada apos falha na atualizacao"
 )
+if defined MOTIVO_GIT set "STATUS_DETALHE=%MOTIVO_GIT%"
 
 :adotar_falhou
 if exist "%CLONE%" rd /s /q "%CLONE%" >nul 2>nul
+if defined MOTIVO_GIT set "STATUS_DETALHE=%MOTIVO_GIT%"
 exit /b 0
 
 :adotar_nao_e
 echo AVISO: esta pasta nao parece ser o gerenciador. Nada foi alterado.
+pause
 exit /b 1
 
 rem ---------------------------------------------------------------------------
 rem checar_atualizacao_rodando: nao altera nada; so avisa se ha versao nova.
 rem ---------------------------------------------------------------------------
 :checar_atualizacao_rodando
+set "VERSAO_LOCAL="
 if not exist ".git" (
+  echo.
   echo Esta pasta ainda nao esta preparada para atualizacao automatica.
   echo Feche com "fechar-gerenciador.bat" e abra de novo para configurar.
+  set "FALHA_CHECAGEM=1"
   exit /b 0
 )
 
 set "GIT_TERMINAL_PROMPT=0"
 del /q "%LOG_GIT%" >nul 2>nul
 "%GIT%" -C "%CD%" -c credential.helper= -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 fetch --quiet "%REPO%" main > "%LOG_GIT%" 2>&1
-if errorlevel 1 (
-  echo.
-  echo AVISO: nao foi possivel verificar atualizacoes.
-  call :diagnosticar_git
-  echo.
-  pause
-  exit /b 0
-)
+if errorlevel 1 goto :checar_sem_conexao
 del /q "%LOG_GIT%" >nul 2>nul
 
 set "ARQ_GIT=%TEMP%\gs-git.txt"
+set "VERSAO_LOCAL="
+"%GIT%" -C "%CD%" rev-parse --short HEAD > "%ARQ_GIT%" 2>nul
+set /p VERSAO_LOCAL=<"%ARQ_GIT%"
+if not defined VERSAO_LOCAL set "VERSAO_LOCAL=local"
+
 set "ATRAS="
 "%GIT%" -C "%CD%" rev-list --count HEAD..FETCH_HEAD > "%ARQ_GIT%" 2>nul
 set /p ATRAS=<"%ARQ_GIT%"
-if not defined ATRAS exit /b 0
+if not defined ATRAS (
+  echo.
+  echo Versao NAO VERIFICADA: nao foi possivel comparar com o GitHub.
+  set "FALHA_CHECAGEM=1"
+  exit /b 0
+)
 if "%ATRAS%"=="0" (
-  echo Voce ja esta na ultima versao.
+  echo.
+  echo Versao ATUAL: %VERSAO_LOCAL% - igual ao GitHub.
   exit /b 0
 )
 
 set "REMOTO="
 "%GIT%" -C "%CD%" rev-parse --short FETCH_HEAD > "%ARQ_GIT%" 2>nul
 set /p REMOTO=<"%ARQ_GIT%"
-echo Ha uma atualizacao disponivel ^(%REMOTO%^).
+echo.
+echo Versao DESATUALIZADA: ha uma atualizacao disponivel ^(%REMOTO%^).
 echo Feche com "fechar-gerenciador.bat" e abra de novo para atualizar.
+set "TEM_ATUALIZACAO=1"
+exit /b 0
+
+:checar_sem_conexao
+echo.
+echo Versao NAO VERIFICADA: nao foi possivel consultar o GitHub.
+call :diagnosticar_git
+if defined MOTIVO_GIT echo   %MOTIVO_GIT%
+set "FALHA_CHECAGEM=1"
 exit /b 0
 
 rem ---------------------------------------------------------------------------

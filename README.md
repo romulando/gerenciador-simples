@@ -13,7 +13,8 @@ ficam em `overlay.db` (SQLite).
 
 ## 2. Variáveis
 
-Copie `.env.local.example` para `.env.local` e preencha:
+O `.env.local` já vem versionado no repositório privado, com as variáveis do
+Theone. O `.env.local.example` serve apenas como referência:
 
 ```env
 SUPABASE_URL=...
@@ -31,7 +32,8 @@ O mesmo `THEONE_API_SECRET` precisa existir no `.env.local` do site
 
 Pré-requisitos: **Node.js 22.13 ou superior** (recomendado: 24 LTS) e **Git**.
 O Git é usado pelo atalho para manter o app atualizado. O repositório é
-público, então não é preciso conta no GitHub.
+privado; o atalho usa o token embutido. Para clonar manualmente, use suas
+credenciais do GitHub.
 
 Em um computador novo:
 
@@ -42,9 +44,8 @@ npm install
 npm run dev
 ```
 
-Copie `.env.local.example` para `.env.local` e preencha as variáveis da seção 2.
-O banco local usa o `node:sqlite` embutido no Node, então não há dependência
-nativa para compilar.
+O `.env.local` já vem no clone. O banco local usa o `node:sqlite` embutido no
+Node, então não há dependência nativa para compilar.
 
 Acesse `http://localhost:4000` e entre com `Theone` (ou o e-mail) e a senha
 desse usuário no Supabase.
@@ -58,25 +59,32 @@ Dá para abrir e fechar o painel com duplo clique, sem usar o terminal:
 
 - `abrir-gerenciador.bat`: antes de abrir, atualiza o código com `git pull`.
   Se a pasta ainda não for um clone, transforma em clone na primeira abertura,
-  preservando `.env.local`, `overlay.db`, `node_modules` e `public/uploads`.
-  Se a pasta estiver vazia (só com o atalho e os dados locais), baixa o
-  projeto do zero, cria o `.env.local` a partir do exemplo e abre no Notepad
-  para preencher. Se o Git não estiver instalado, oferece instalar pelo
-  `winget`. Se o painel já estiver rodando na 4000, avisa, mostra se há
+  preservando `overlay.db`, `node_modules` e `public/uploads`. Se a pasta
+  estiver vazia (só com o atalho e os dados locais), baixa o projeto do zero,
+  incluindo o `.env.local`. Se o Git não estiver instalado, oferece instalar
+  pelo `winget`. Se o painel já estiver rodando na 4000, avisa, mostra se há
   atualização e só abre o navegador. Se o pull falhar (sem internet,
-  alterações locais ou conflito), abre a versão atual mesmo assim.
+  alterações locais ou conflito), abre a versão atual mesmo assim. A janela
+  do servidor mostra se a versão foi atualizada, se já estava atual ou se
+  continua desatualizada, com o motivo.
 - `fechar-gerenciador.bat`: encerra o que estiver rodando na porta 4000. Se o
   processo não parecer ser o gerenciador, pede confirmação antes de matar.
 
+A janela **Gerenciador Simples - Dev (porta 4000)** continua aberta com os
+logs do Next e mostra no topo o resultado da atualização:
+`Versao ATUALIZADA`, `Versao ATUAL`, `Versao DESATUALIZADA`,
+`Versao INSTALADA` ou `Versao NAO VERIFICADA`.
+
 ### Instalar em uma pasta nova (só com o atalho)
 
-1. Crie uma pasta vazia (ou coloque nela o `.env.local` do cliente, se já tiver).
+1. Crie uma pasta vazia.
 2. Coloque `abrir-gerenciador.bat` dentro dela e execute.
-3. Ele baixa o projeto do GitHub, cria o `.env.local` a partir do exemplo
-   (abre no Notepad), roda `npm install` e abre o painel.
+3. Ele baixa o projeto (com o `.env.local`), roda `npm install` e abre o
+   painel.
 
 Se a pasta tiver outros arquivos, o atalho pede confirmação antes de copiar o
-projeto por cima. Ele não apaga `.env.local`, `overlay.db` nem `public/uploads`.
+projeto por cima. Ele não apaga `overlay.db` nem `public/uploads`. O
+`.env.local` e o próprio `.bat` são atualizados junto com o código.
 
 > Se o painel já estiver rodando na porta 4000, feche com
 > `fechar-gerenciador.bat` antes de abrir o atalho em uma pasta nova.
@@ -86,8 +94,8 @@ projeto por cima. Ele não apaga `.env.local`, `overlay.db` nem `public/uploads`
 
 ## 4. Publicar uma versão nova
 
-A publicação é feita direto no branch `main` do GitHub. Não há zip, release
-nem token: os clientes atualizam ao abrir o atalho.
+A publicação é feita direto no branch `main` do GitHub. Não há zip nem
+release: os clientes atualizam ao abrir o atalho.
 
 1. Faça commit e envie para o `main`:
 
@@ -104,26 +112,28 @@ nem token: os clientes atualizam ao abrir o atalho.
 3. Se o cliente estiver com o painel aberto, o atalho avisa que existe
    atualização; é só fechar e abrir de novo.
 
-O que é preservado em qualquer atualização: `.env.local`, `overlay.db` (e
-`-shm`/`-wal`), `public/uploads` e `node_modules`. O `.next` é limpo quando há
+O que é preservado em qualquer atualização: `overlay.db` (e `-shm`/`-wal`),
+`public/uploads` e `node_modules`. O `.env.local` e o `.bat` acompanham o
+repositório e são atualizados junto com o código. O `.next` é limpo quando há
 código novo e o Next recria na próxima abertura.
 
 Na primeira configuração de uma pasta que ainda não é clone, é criado um backup
-em `.backup-antigo`.
+em `.backup-antigo` (incluindo `.env.local` e o `.bat` antigos).
 
 ### Cliente novo
 
 1. Instale **Node.js 22.13+** e **Git** (o atalho também oferece instalar o Git).
-2. Crie uma pasta e coloque o `abrir-gerenciador.bat` (e o `.env.local` do
-   cliente, se já tiver).
-3. Execute o atalho; ele baixa o projeto, roda `npm install` e abre o painel.
+2. Crie uma pasta e coloque o `abrir-gerenciador.bat`.
+3. Execute o atalho; ele baixa o projeto (com o `.env.local`), roda
+   `npm install` e abre o painel.
 
 ### Cliente que já tem o gerenciador (uma vez)
 
 1. Instale o Git (o atalho novo também oferece instalar pelo `winget`).
 2. Substitua o `abrir-gerenciador.bat` pelo novo (basta enviar esse arquivo).
 3. Abra o atalho; ele transforma a pasta em clone e atualiza o código,
-   mantendo os dados locais.
+   incluindo o `.env.local`. Depois dessa primeira vez, o próprio atalho se
+   atualiza junto com o projeto, sem precisar enviar arquivo de novo.
 
 > O `abrir-gerenciador.bat` novo precisa estar no `main` antes de ser enviado
 > ao cliente, porque a primeira atualização baixa o que estiver no `main`.
