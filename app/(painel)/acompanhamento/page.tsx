@@ -7,6 +7,7 @@ import { formatarMoeda, TIPOS_SERVICO } from '@/lib/helpers';
 import { percentual, textoQuantidade, valorPedido } from '@/lib/resumo';
 import Progresso from '@/components/pedidos/Progresso';
 import AvisoSemConta from '@/components/pedidos/AvisoSemConta';
+import GsiConfig from '@/components/stream-overlay/GsiConfig';
 import Alerta from '@/components/ui/Alerta';
 
 export const dynamic = 'force-dynamic';
@@ -52,6 +53,8 @@ export default async function AcompanhamentoPage() {
       {erro && <Alerta tipo="erro">{erro}</Alerta>}
 
       <AvisoSemConta pedidos={pedidosSemConta} />
+
+      <GsiConfig />
 
       {grupos.map((grupo) => {
         const Icon = grupo.Icon;

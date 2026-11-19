@@ -40,6 +40,17 @@ export interface ResultadoInstalacao {
   localizacao: DotaLocalizacao;
 }
 
+// Situação do .cfg encontrado na pasta do Dota 2. O nome do arquivo é o mesmo
+// usado por outros gerenciadores, então só o conteúdo (uri + token) diz se ele
+// é deste painel.
+export type StatusGsiInstalado = 'ok' | 'ausente' | 'outro_app' | 'ilegivel';
+
+export interface VerificacaoGsi {
+  status: StatusGsiInstalado;
+  arquivoDoApp: boolean;
+  uriInstalada: string | null;
+}
+
 // Cache curto da detecção (evita varrer drives a cada poll da aba).
 const CACHE_MS = 15_000;
 let cache: { valor: DotaLocalizacao; expiraEm: number } | null = null;
@@ -170,6 +181,59 @@ export function montarConteudoGsi(uri: string, token: string): string {
     }
 }
 `;
+}
+
+// Extrai o valor de uma chave do .cfg do GSI (formato "chave" "valor").
+function extrairValorGsi(conteudo: string, chave: string): string | null {
+  const re = new RegExp(`"${chave}"\\s+"([^"]*)"`, 'i');
+  const m = re.exec(conteudo);
+  return m ? m[1] : null;
+}
+
+// A uri só precisa apontar para a mesma porta/rota; o host pode variar entre
+// localhost/127.0.0.1 e continua funcionando.
+function uriCompativel(instalada: string | null, esperada: string): boolean {
+  if (!instalada) return false;
+  if (instalada === esperada) return true;
+  try {
+    const a = new URL(instalada);
+    const b = new URL(esperada);
+    return a.port === b.port && a.pathname === b.pathname;
+  } catch {
+    return false;
+  }
+}
+
+// Confere se o .cfg instalado é realmente deste painel. Um arquivo de outro
+// gerenciador (mesmo nome de arquivo) ou com token antigo faz o Dota enviar os
+// dados para a instalação errada; nesse caso o GSI fica mudo mesmo com o
+// arquivo "instalado".
+export function verificarGsiInstalado(
+  localizacao: DotaLocalizacao,
+  uriEsperada: string,
+  tokenEsperado: string
+): VerificacaoGsi {
+  if (!localizacao.arquivoPath || !existe(localizacao.arquivoPath)) {
+    return { status: 'ausente', arquivoDoApp: false, uriInstalada: null };
+  }
+
+  let conteudo: string;
+  try {
+    conteudo = fs.readFileSync(localizacao.arquivoPath, 'utf8');
+  } catch {
+    return { status: 'ilegivel', arquivoDoApp: false, uriInstalada: null };
+  }
+
+  const uriInstalada = extrairValorGsi(conteudo, 'uri');
+  const tokenInstalado = extrairValorGsi(conteudo, 'token');
+  const doApp =
+    tokenInstalado === tokenEsperado && uriCompativel(uriInstalada, uriEsperada);
+
+  return {
+    status: doApp ? 'ok' : 'outro_app',
+    arquivoDoApp: doApp,
+    uriInstalada,
+  };
 }
 
 export function instalarGsi(conteudo: string): ResultadoInstalacao {

@@ -1,10 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, ClipboardCopy, Download, RefreshCw } from 'lucide-react';
 import Alerta from '@/components/ui/Alerta';
 import { copiarTexto } from '@/lib/clipboard';
 import { buscarJson, btnSecondary, enviarJson } from '@/components/pedidos/common';
+
+type StatusGsiInstalado = 'ok' | 'ausente' | 'outro_app' | 'ilegivel';
+
+interface GsiVerificacao {
+  status: StatusGsiInstalado;
+  arquivoDoApp: boolean;
+  uriInstalada: string | null;
+}
 
 interface GsiConfigResposta {
   uri: string;
@@ -17,6 +25,7 @@ interface GsiConfigResposta {
     arquivoInstalado: boolean;
     caminhosTestados: string[];
   };
+  verificacao?: GsiVerificacao;
 }
 
 export default function GsiConfig() {
@@ -25,6 +34,10 @@ export default function GsiConfig() {
   const [aviso, setAviso] = useState('');
   const [copiado, setCopiado] = useState(false);
   const [instalando, setInstalando] = useState(false);
+  // Mantém o card no ar por alguns segundos depois de instalar, para o aviso
+  // de sucesso não desaparecer junto (instalado = card escondido).
+  const [mostrandoAviso, setMostrandoAviso] = useState(false);
+  const avisoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const carregar = useCallback(async () => {
     setErro('');
@@ -38,6 +51,13 @@ export default function GsiConfig() {
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  useEffect(
+    () => () => {
+      if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current);
+    },
+    []
+  );
 
   async function copiar() {
     if (!config) return;
@@ -60,7 +80,13 @@ export default function GsiConfig() {
       );
       if (res.ok) {
         setAviso(`GSI instalado em ${res.arquivoPath ?? 'pasta do Dota 2'}. Reinicie o Dota 2.`);
+        setMostrandoAviso(true);
         await carregar();
+        if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current);
+        avisoTimerRef.current = setTimeout(() => {
+          setAviso('');
+          setMostrandoAviso(false);
+        }, 4000);
       } else {
         setErro(res.error || 'Não foi possível instalar automaticamente.');
       }
@@ -70,6 +96,24 @@ export default function GsiConfig() {
       setInstalando(false);
     }
   }
+
+  // Card só aparece enquanto o GSI deste painel não estiver instalado. O nome
+  // do .cfg é o mesmo usado por outros gerenciadores, então além de existir o
+  // conteúdo precisa ser o nosso (uri + token). Durante o carregamento inicial
+  // também não renderiza, para não piscar na tela; o aviso pós-instalação
+  // segura o card por alguns segundos.
+  const verificacao = config?.verificacao;
+  // A verificação lê o arquivo na hora; ela manda mais que o `arquivoInstalado`
+  // (que vem do cache de detecção da pasta).
+  const arquivoExiste = verificacao
+    ? verificacao.status !== 'ausente'
+    : Boolean(config?.localizacao.arquivoInstalado);
+  const instalado = Boolean(arquivoExiste && (verificacao?.arquivoDoApp ?? true));
+  const precisaSubstituir = Boolean(
+    arquivoExiste && verificacao && !verificacao.arquivoDoApp
+  );
+  if (!config && !erro) return null;
+  if (instalado && !mostrandoAviso) return null;
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-xl">
@@ -91,6 +135,29 @@ export default function GsiConfig() {
       {erro && <Alerta tipo="erro" className="mt-3">{erro}</Alerta>}
       {aviso && <Alerta tipo="sucesso" className="mt-3">{aviso}</Alerta>}
 
+      {verificacao?.status === 'outro_app' && (
+        <Alerta tipo="aviso" className="mt-3">
+          Existe um <code className="text-gray-100">{config?.nomeArquivo}</code> na pasta do
+          Dota 2 que não foi gerado por este painel (provavelmente outro gerenciador ou uma
+          instalação antiga).
+          {verificacao.uriInstalada && (
+            <>
+              {' '}
+              Ele envia os dados para{' '}
+              <code className="break-all text-gray-100">{verificacao.uriInstalada}</code>.
+            </>
+          )}{' '}
+          O GSI deste painel não recebe nada até o arquivo ser substituído — depois reinicie o
+          Dota 2.
+        </Alerta>
+      )}
+      {verificacao?.status === 'ilegivel' && (
+        <Alerta tipo="aviso" className="mt-3">
+          Encontrei o arquivo do GSI, mas não consegui lê-lo para confirmar que é deste painel
+          (permissão de acesso). Se o GSI não conectar, substitua o arquivo pelo botão abaixo.
+        </Alerta>
+      )}
+
       {config && (
         <div className="mt-3 space-y-3">
           <div className="grid gap-2 text-xs sm:grid-cols-2">
@@ -110,7 +177,11 @@ export default function GsiConfig() {
             <button type="button" onClick={instalar} disabled={instalando} className={btnSecondary}>
               <span className="flex items-center gap-1.5">
                 <Download className="h-4 w-4" />
-                {instalando ? 'Instalando…' : 'Instalar na pasta do Dota 2'}
+                {instalando
+                  ? 'Instalando…'
+                  : precisaSubstituir
+                    ? 'Substituir GSI instalado'
+                    : 'Instalar na pasta do Dota 2'}
               </span>
             </button>
             <button type="button" onClick={() => void copiar()} className={btnSecondary}>
