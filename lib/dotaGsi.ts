@@ -43,7 +43,7 @@ export interface ResultadoInstalacao {
 // Situação do .cfg encontrado na pasta do Dota 2. O nome do arquivo é o mesmo
 // usado por outros gerenciadores, então só o conteúdo (uri + token) diz se ele
 // é deste painel.
-export type StatusGsiInstalado = 'ok' | 'ausente' | 'outro_app' | 'ilegivel';
+export type StatusGsiInstalado = 'ok' | 'ausente' | 'outro_app' | 'ilegivel' | 'desatualizado';
 
 export interface VerificacaoGsi {
   status: StatusGsiInstalado;
@@ -162,7 +162,7 @@ export function montarConteudoGsi(uri: string, token: string): string {
     "uri"           "${uri}"
     "timeout"       "5.0"
     "buffer"        "0.1"
-    "throttle"      "0.5"
+    "throttle"      "1.0"
     "heartbeat"     "30.0"
     "data"
     {
@@ -204,6 +204,12 @@ function uriCompativel(instalada: string | null, esperada: string): boolean {
   }
 }
 
+// Ignora espaços/quebras de linha: o que importa são os valores do .cfg
+// (uri, token, buffer, throttle, heartbeat e blocos de dados).
+function normalizarConteudoGsi(conteudo: string): string {
+  return conteudo.replace(/\s+/g, '');
+}
+
 // Confere se o .cfg instalado é realmente deste painel. Um arquivo de outro
 // gerenciador (mesmo nome de arquivo) ou com token antigo faz o Dota enviar os
 // dados para a instalação errada; nesse caso o GSI fica mudo mesmo com o
@@ -229,9 +235,23 @@ export function verificarGsiInstalado(
   const doApp =
     tokenInstalado === tokenEsperado && uriCompativel(uriInstalada, uriEsperada);
 
+  if (!doApp) {
+    return {
+      status: 'outro_app',
+      arquivoDoApp: false,
+      uriInstalada,
+    };
+  }
+
+  // O arquivo é deste painel, mas pode ter sido gerado por uma versão antiga
+  // (ex.: throttle 0.5). Nesse caso o card precisa reaparecer para atualizar.
+  const esperado = montarConteudoGsi(uriEsperada, tokenEsperado);
+  const atualizado =
+    normalizarConteudoGsi(conteudo) === normalizarConteudoGsi(esperado);
+
   return {
-    status: doApp ? 'ok' : 'outro_app',
-    arquivoDoApp: doApp,
+    status: atualizado ? 'ok' : 'desatualizado',
+    arquivoDoApp: true,
     uriInstalada,
   };
 }

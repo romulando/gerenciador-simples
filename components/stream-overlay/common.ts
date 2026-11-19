@@ -203,6 +203,7 @@ export interface DadosOverlay {
   ativo: boolean;
   atualizadoEm: string;
   estado: EstadoCena | null;
+  cenasAtivo: boolean;
   pedido: PedidoOverlay | null;
   wins: number;
   losses: number;

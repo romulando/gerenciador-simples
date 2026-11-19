@@ -221,20 +221,29 @@ function OverlayConteudo() {
 
   useEffect(() => {
     if (!token) return;
-    (async () => {
-      await Promise.all([carregarEstado(), carregarDados()]);
-    })();
-    const tEstado = setInterval(() => void carregarEstado(), INTERVALO_ESTADO_MS);
+    void carregarDados();
     const tDados = setInterval(() => void carregarDados(), INTERVALO_DADOS_MS);
-    return () => {
-      clearInterval(tEstado);
-      clearInterval(tDados);
-    };
-  }, [token, carregarEstado, carregarDados]);
+    return () => clearInterval(tDados);
+  }, [token, carregarDados]);
 
-  // O layout do endpoint leve tem prioridade: ele chega antes de a troca de
-  // cena aparecer no payload completo. Sem ele, usa o layout que veio nos dados.
-  const layout = estadoLayout?.layout ?? dados?.layout ?? null;
+  // O poll de 120 ms só é necessário quando as cenas estão ativas: é ele que
+  // aplica o layout no mesmo instante da troca de cena no OBS. Com cena fixa
+  // (Controle de Cenas desligado ou ?cena=), o poll de dados de 2,5 s basta.
+  useEffect(() => {
+    if (!token || cena || dados?.cenasAtivo !== true) return;
+    void carregarEstado();
+    const tEstado = setInterval(() => void carregarEstado(), INTERVALO_ESTADO_MS);
+    return () => clearInterval(tEstado);
+  }, [token, cena, dados?.cenasAtivo, carregarEstado]);
+
+  // O layout do endpoint leve tem prioridade quando as cenas estão ativas: ele
+  // chega antes de a troca de cena aparecer no payload completo. Com cena fixa,
+  // usa o layout do payload completo.
+  const cenasAtivo = dados?.cenasAtivo ?? true;
+  const layout =
+    cena || cenasAtivo === false
+      ? dados?.layout ?? null
+      : estadoLayout?.layout ?? dados?.layout ?? null;
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-transparent">

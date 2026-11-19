@@ -38,7 +38,7 @@ import {
   type TipoSlide,
 } from '../components/stream-overlay/common';
 import { nomeMesAtual, obterTotalMesLivepix } from './livepix';
-import { resolverEstadoAtual } from './obsCenas';
+import { getCenasAtivas, resolverEstadoAtual } from './obsCenas';
 import { obterContagemSubs } from './twitch';
 import { getPedidoSelecionado, setPedidoSelecionado } from './pedidoSelecionado';
 import { getContaPedido } from './pedidoContas';
@@ -598,6 +598,7 @@ export interface DadosOverlay {
   ativo: boolean;
   atualizadoEm: string;
   estado: EstadoCena | null;
+  cenasAtivo: boolean;
   pedido: {
     id: number;
     trackingId: string | null;
@@ -661,6 +662,7 @@ export async function dadosOverlay(
     ativo: pedido != null,
     atualizadoEm: new Date().toISOString(),
     estado,
+    cenasAtivo: getCenasAtivas(db),
     pedido: pedido
       ? {
           id: pedido.id,

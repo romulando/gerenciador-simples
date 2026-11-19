@@ -6,7 +6,7 @@ import Alerta from '@/components/ui/Alerta';
 import { copiarTexto } from '@/lib/clipboard';
 import { buscarJson, btnSecondary, enviarJson } from '@/components/pedidos/common';
 
-type StatusGsiInstalado = 'ok' | 'ausente' | 'outro_app' | 'ilegivel';
+type StatusGsiInstalado = 'ok' | 'ausente' | 'outro_app' | 'ilegivel' | 'desatualizado';
 
 interface GsiVerificacao {
   status: StatusGsiInstalado;
@@ -108,10 +108,11 @@ export default function GsiConfig() {
   const arquivoExiste = verificacao
     ? verificacao.status !== 'ausente'
     : Boolean(config?.localizacao.arquivoInstalado);
-  const instalado = Boolean(arquivoExiste && (verificacao?.arquivoDoApp ?? true));
+  const instalado = Boolean(arquivoExiste && verificacao?.status === 'ok');
   const precisaSubstituir = Boolean(
     arquivoExiste && verificacao && !verificacao.arquivoDoApp
   );
+  const precisaAtualizar = verificacao?.status === 'desatualizado';
   if (!config && !erro) return null;
   if (instalado && !mostrandoAviso) return null;
 
@@ -157,6 +158,12 @@ export default function GsiConfig() {
           (permissão de acesso). Se o GSI não conectar, substitua o arquivo pelo botão abaixo.
         </Alerta>
       )}
+      {precisaAtualizar && (
+        <Alerta tipo="aviso" className="mt-3">
+          O arquivo do GSI é deste painel, mas está com uma configuração antiga. Clique em
+          “Atualizar GSI” para aplicar a configuração atual e reinicie o Dota 2.
+        </Alerta>
+      )}
 
       {config && (
         <div className="mt-3 space-y-3">
@@ -181,7 +188,9 @@ export default function GsiConfig() {
                   ? 'Instalando…'
                   : precisaSubstituir
                     ? 'Substituir GSI instalado'
-                    : 'Instalar na pasta do Dota 2'}
+                    : precisaAtualizar
+                      ? 'Atualizar GSI'
+                      : 'Instalar na pasta do Dota 2'}
               </span>
             </button>
             <button type="button" onClick={() => void copiar()} className={btnSecondary}>
