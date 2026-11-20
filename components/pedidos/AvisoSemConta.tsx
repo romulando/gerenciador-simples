@@ -16,10 +16,12 @@ export interface PedidoSemConta {
 // entrar na página + botão "Adicionar ID" por pedido.
 export default function AvisoSemConta({
   pedidos,
+  carregado = true,
   contaDetectada,
   onSalvo,
 }: {
   pedidos: PedidoSemConta[];
+  carregado?: boolean;
   contaDetectada?: string | null;
   onSalvo?: () => void | Promise<void>;
 }) {
@@ -34,7 +36,7 @@ export default function AvisoSemConta({
   );
 
   useEffect(() => {
-    if (!pedidos.length || avisado.current) return;
+    if (!carregado || !pedidos.length || avisado.current) return;
     avisado.current = true;
     void confirmar({
       titulo: 'Pedidos sem ID do Dota 2',
@@ -46,9 +48,9 @@ export default function AvisoSemConta({
       somenteOk: true,
     });
     // `chave` acompanha a lista para o efeito rodar quando ela muda.
-  }, [pedidos, chave, confirmar]);
+  }, [carregado, pedidos, chave, confirmar]);
 
-  if (!pedidos.length) return null;
+  if (!carregado || !pedidos.length) return null;
 
   return (
     <>

@@ -59,6 +59,11 @@ export default function StreamOverlayPage() {
   const [painel, setPainel] = useState<RespostaPainelOverlay | null>(null);
   const [pedidos, setPedidos] = useState<PedidoTheone[]>([]);
   const [contas, setContas] = useState<ContaPedidoOverlay[]>([]);
+  // Lista de pedidos e vínculos chegam em requisições separadas. Sem estas
+  // flags, a tela compara pedidos com uma lista de contas ainda vazia e acusa
+  // "sem ID" em todos eles por alguns instantes.
+  const [pedidosProntos, setPedidosProntos] = useState(false);
+  const [contasProntas, setContasProntas] = useState(false);
   const [selecionado, setSelecionado] = useState('');
   const [contaEditando, setContaEditando] = useState(false);
   const [erro, setErro] = useState('');
@@ -102,6 +107,7 @@ export default function StreamOverlayPage() {
     setPainel(data);
     setContas(data.contas ?? []);
     setSelecionado(data.pedidoSelecionado ?? '');
+    setContasProntas(true);
     return data;
   }, []);
 
@@ -109,12 +115,25 @@ export default function StreamOverlayPage() {
     const lista = await buscarJson<{ pedidos: PedidoTheone[] }>('/api/orders');
     const novos = lista.pedidos ?? [];
     setPedidos(novos);
+    setPedidosProntos(true);
     return novos;
   }, []);
 
   const carregar = useCallback(async () => {
     const [data, lista] = await Promise.all([carregarPainel(), carregarPedidos()]);
-    const atual = data.pedidoSelecionado ?? '';
+    let atual = data.pedidoSelecionado ?? '';
+
+    // Seleção apontando para um tracking que não existe mais (pedido apagado
+    // ou tracking antigo): limpa para a overlay não ficar presa em
+    // "aguardando". Só limpa quando o painel também não resolve o pedido e ele
+    // não está na lista, para não perder a seleção por uma falha passageira.
+    const naLista = lista.some(
+      (p) => String(p.tracking_id ?? '').toUpperCase() === atual
+    );
+    if (atual && !naLista && !data.dados.pedido) {
+      await selecionar('');
+      atual = '';
+    }
 
     // Primeira carga sem seleção: se houver só um pedido em andamento, usa ele.
     if (!atual && !autoSelecionou.current) {
@@ -228,11 +247,14 @@ export default function StreamOverlayPage() {
       contaDetectada &&
       contaSelecionada !== contaDetectada
   );
-  const pedidosSemConta = pedidos
-    .filter((p) => p.estado === 'em_andamento')
-    .filter((p) => ehServicoSolo(p.tipo_servico))
-    .filter((p) => !contasPorTracking.get(String(p.tracking_id ?? '').toUpperCase()))
-    .map((p) => ({ trackingId: p.tracking_id, tipoServico: p.tipo_servico }));
+  const dadosCarregados = pedidosProntos && contasProntas;
+  const pedidosSemConta = !dadosCarregados
+    ? []
+    : pedidos
+        .filter((p) => p.estado === 'em_andamento')
+        .filter((p) => ehServicoSolo(p.tipo_servico))
+        .filter((p) => !contasPorTracking.get(String(p.tracking_id ?? '').toUpperCase()))
+        .map((p) => ({ trackingId: p.tracking_id, tipoServico: p.tipo_servico }));
 
   return (
     <div className="space-y-6">
@@ -276,6 +298,7 @@ export default function StreamOverlayPage() {
 
       <AvisoSemConta
         pedidos={pedidosSemConta}
+        carregado={dadosCarregados}
         contaDetectada={dados?.gsi.online ? dados.gsi.contaDetectada : null}
         onSalvo={carregar}
       />
@@ -449,6 +472,11 @@ export default function StreamOverlayPage() {
                   </div>
                 </div>
               </>
+            ) : !painel ? (
+              <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-3">
+                <div className="h-3 w-40 animate-pulse rounded bg-white/10" />
+                <div className="h-3 w-64 animate-pulse rounded bg-white/5" />
+              </div>
             ) : (
               <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-dashed border-white/15 bg-white/[0.02] px-3 py-3">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#e8a020]" />
