@@ -5,17 +5,22 @@ title Gerenciador Simples - Theone
 rem ===========================================================================
 rem  Abre o Gerenciador Simples.
 rem
-rem  Antes de abrir, atualiza o codigo pelo Git:
+rem  Antes de abrir, prepara o computador e atualiza o codigo:
+rem    - se o Node.js nao estiver instalado, instala a versao LTS atual;
+rem    - se o Git nao estiver instalado, instala o Git para Windows;
 rem    - se a pasta ja e um clone (tem .git), roda "git pull --ff-only";
 rem    - se ainda nao e clone, baixa o repositorio e transforma a pasta em
 rem      clone, preservando overlay.db, node_modules e uploads;
 rem    - se a pasta estiver vazia (so com este .bat e os dados locais), baixa
 rem      o projeto do zero, incluindo o .env.local versionado.
 rem
+rem  As instalacoes tentam o winget em modo silencioso. Se o winget nao
+rem  existir ou falhar, o script baixa o instalador oficial e abre o wizard
+rem  do Windows. O UAC (janela de permissao de administrador) pode aparecer.
+rem
 rem  O repositorio e privado. O acesso usa um token fine-grained
 rem  (Contents: Read-only) embutido neste .bat; nao precisa de conta no GitHub.
 rem  Crie o token com validade de 1 ano e anote a data para renovar.
-rem  Se o Git nao estiver instalado, o script oferece instalar pelo winget.
 rem
 rem  Este .bat e o .env.local sao versionados no repositorio. O .bat roda a
 rem  partir de uma copia em TEMP para poder se atualizar sem interromper a
@@ -66,6 +71,12 @@ if /i "%GIT_TOKEN%"=="SEU_TOKEN_AQUI" (
 set "LOG_GIT=%TEMP%\gs-git-erro.txt"
 set "GIT_TERMINAL_PROMPT=0"
 set "GCM_INTERACTIVE=Never"
+set "NODE="
+set "NODE_DIR="
+set "NODEVER="
+set "NODE_TENTATIVAS=0"
+set "INSTALOU_NODE="
+set "INSTALOU_GIT="
 set "GIT="
 set "ATUALIZOU="
 set "INSTALAR="
@@ -94,53 +105,49 @@ if /i "%GIT_TOKEN%"=="SEU_TOKEN_AQUI" (
 )
 
 rem ---- 1) Node.js instalado? ----
-where node >nul 2>nul
-if errorlevel 1 goto :sem_node
+call :garantir_node
+if errorlevel 1 goto :erro_node
 
-for /f "delims=" %%v in ('node -v 2^>nul') do set "NODEVER=%%v"
-set "NODEVER=%NODEVER:v=%"
+if not defined INSTALOU_NODE goto :node_encontrado
+set "STATUS_EXTRA=Node.js LTS instalado."
+echo Node.js instalado: v%NODEVER%
+goto :node_ok
+
+:node_encontrado
 echo Node.js encontrado: v%NODEVER%
 
-rem ---- 1.1) O Node precisa ter o SQLite embutido (node:sqlite, Node 22.13+) ----
-node -e "require('node:sqlite')" >nul 2>nul
-if errorlevel 1 goto :node_antigo
+:node_ok
 
 rem ---- 1.2) Git (necessario para atualizar) ----
 call :detectar_git
 if defined GIT goto :git_ok
 
 echo.
-echo AVISO: o Git nao foi encontrado neste computador.
-echo Ele e necessario para baixar as atualizacoes automaticamente.
-echo.
-choice /c SN /n /m "Tentar instalar o Git agora? [S/N] "
-if errorlevel 2 goto :sem_git
+echo Git nao encontrado. Instalando o Git para Windows...
+call :instalar_git
+call :detectar_git
+if not defined GIT goto :sem_git
 
-where winget >nul 2>nul
-if errorlevel 1 (
-  echo.
-  echo Abrindo a pagina de download do Git...
-  start "" "https://git-scm.com/download/win"
-  goto :sem_git
+set "INSTALOU_GIT=1"
+if defined STATUS_EXTRA (
+  set "STATUS_EXTRA=%STATUS_EXTRA% Git instalado."
+) else (
+  set "STATUS_EXTRA=Git instalado."
 )
 
-echo.
-echo Instalando o Git pelo winget...
-winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements
-call :detectar_git
-if defined GIT goto :git_ok
+:git_ok
+echo Git encontrado.
+goto :apos_git
 
 :sem_git
 echo.
+echo AVISO: nao foi possivel instalar o Git automaticamente.
 echo Sem o Git, o gerenciador so abre se o projeto ja estiver nesta pasta.
 echo Para baixar e atualizar, instale em https://git-scm.com/download/win
 echo e abra este atalho de novo.
 set "STATUS_VERSAO=Versao NAO VERIFICADA: Git nao encontrado"
 set "STATUS_DETALHE=Instale o Git para atualizar automaticamente."
 goto :apos_git
-
-:git_ok
-echo Git encontrado.
 
 :apos_git
 
@@ -184,7 +191,11 @@ call npm install
 if not "%errorlevel%"=="0" goto :erro_instalacao
 echo.
 echo Dependencias instaladas com sucesso.
-set "STATUS_EXTRA=Dependencias reinstaladas."
+if defined STATUS_EXTRA (
+  set "STATUS_EXTRA=%STATUS_EXTRA% Dependencias reinstaladas."
+) else (
+  set "STATUS_EXTRA=Dependencias reinstaladas."
+)
 
 :rodar
 echo.
@@ -247,23 +258,19 @@ echo Pressione uma tecla para fechar esta janela.
 pause >nul
 goto :fim
 
-:sem_node
+:erro_node
 echo.
-echo ERRO: Node.js nao foi encontrado neste computador.
-echo.
-echo Instale o Node.js LTS ^(versao 22.13 ou superior^) em:
-echo   https://nodejs.org/pt-br/download
-echo.
-echo Depois de instalar, feche e abra este arquivo novamente.
-pause
-goto :fim
+if defined NODEVER goto :erro_node_desatualizado
+echo ERRO: nao consegui instalar o Node.js neste computador.
+goto :erro_node_instrucoes
 
-:node_antigo
+:erro_node_desatualizado
+echo ERRO: o Node.js instalado ^(v%NODEVER%^) nao atende aos requisitos.
+echo Este gerenciador precisa do Node.js 22.13 ou superior, com node:sqlite.
+
+:erro_node_instrucoes
 echo.
-echo ERRO: a versao do Node.js instalada e antiga demais ^(v%NODEVER%^).
-echo.
-echo Este gerenciador precisa do Node.js 22.13 ou superior.
-echo Instale a versao LTS atual em:
+echo Instale manualmente a versao LTS atual em:
 echo   https://nodejs.org/pt-br/download
 echo.
 echo Depois de instalar, feche e abra este arquivo novamente.
@@ -307,6 +314,214 @@ endlocal
 exit /b 0
 
 rem ---------------------------------------------------------------------------
+rem garantir_node: garante Node.js 22.13+ com node:sqlite. Se faltar, instala
+rem a LTS atual; se estiver antigo, tenta atualizar. Retorna 0 em sucesso.
+rem ---------------------------------------------------------------------------
+:garantir_node
+set "NODEVER="
+set "NODE_TENTATIVAS=0"
+call :detectar_node
+if defined NODE goto :garantir_node_verificar
+
+echo.
+echo Node.js nao encontrado. Instalando a versao LTS atual...
+call :instalar_node
+call :detectar_node
+if not defined NODE goto :garantir_node_falhou
+set "INSTALOU_NODE=1"
+set "NODE_TENTATIVAS=1"
+
+:garantir_node_verificar
+set "NODEVER="
+for /f "delims=" %%v in ('node -v 2^>nul') do if not defined NODEVER set "NODEVER=%%v"
+if not defined NODEVER goto :garantir_node_falhou
+set "NODEVER=%NODEVER:v=%"
+
+node -e "require('node:sqlite')" >nul 2>nul
+if not errorlevel 1 exit /b 0
+
+if "%NODE_TENTATIVAS%"=="1" goto :garantir_node_falhou
+echo.
+echo A versao do Node.js ^(v%NODEVER%^) e antiga demais.
+echo Atualizando para a versao LTS atual...
+set "NODE_TENTATIVAS=1"
+call :instalar_node upgrade
+call :detectar_node
+set "INSTALOU_NODE=1"
+goto :garantir_node_verificar
+
+:garantir_node_falhou
+exit /b 1
+
+rem ---------------------------------------------------------------------------
+rem instalar_node: tenta winget primeiro; sem winget ou se ele falhar, baixa
+rem o MSI oficial e abre o wizard. Depois atualiza NODE e PATH.
+rem ---------------------------------------------------------------------------
+:instalar_node
+echo.
+where winget >nul 2>nul
+if errorlevel 1 goto :instalar_node_manual
+
+if /i "%~1"=="upgrade" goto :instalar_node_upgrade
+echo Tentando instalar o Node.js LTS pelo winget...
+winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-package-agreements --accept-source-agreements --silent
+goto :instalar_node_winget_fim
+
+:instalar_node_upgrade
+echo Tentando atualizar o Node.js pelo winget...
+winget upgrade --id OpenJS.NodeJS.LTS -e --source winget --accept-package-agreements --accept-source-agreements --silent
+
+:instalar_node_winget_fim
+call :detectar_node
+if defined NODE (
+  node -e "require('node:sqlite')" >nul 2>nul
+  if not errorlevel 1 exit /b 0
+)
+ping -n 3 127.0.0.1 >nul
+call :detectar_node
+if defined NODE (
+  node -e "require('node:sqlite')" >nul 2>nul
+  if not errorlevel 1 exit /b 0
+)
+
+echo.
+echo O winget nao conseguiu instalar o Node.js.
+echo Tentando o instalador oficial...
+
+:instalar_node_manual
+call :baixar_node_msi
+if errorlevel 1 exit /b 1
+
+echo.
+echo Abrindo o instalador do Node.js.
+echo Conclua a instalacao na janela que abrir.
+start "" /wait msiexec /i "%TEMP%\gs-node-lts.msi"
+call :aguardar_node
+if not defined NODE goto :instalar_node_falhou
+
+del /q "%TEMP%\gs-node-lts.msi" >nul 2>nul
+exit /b 0
+
+:instalar_node_falhou
+del /q "%TEMP%\gs-node-lts.msi" >nul 2>nul
+echo.
+echo ERRO: o Node.js nao foi instalado.
+echo Baixe manualmente a versao LTS em https://nodejs.org/pt-br/download
+exit /b 1
+
+rem ---------------------------------------------------------------------------
+rem baixar_node_msi: consulta o index.json do nodejs.org e baixa o MSI x64
+rem da LTS mais recente para %TEMP%.
+rem ---------------------------------------------------------------------------
+:baixar_node_msi
+echo.
+echo Baixando o instalador do Node.js LTS...
+del /q "%TEMP%\gs-node-lts.msi" >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $i=Invoke-RestMethod -Uri 'https://nodejs.org/dist/index.json'; $v=$i | Where-Object { $_.lts -ne $false } | Select-Object -First 1; if (-not $v) { throw 'sem versao LTS' }; $f=$v.files | Where-Object { $_ -eq 'win-x64-msi' } | Select-Object -First 1; if (-not $f) { throw 'sem MSI' }; Invoke-WebRequest -Uri ('https://nodejs.org/dist/' + $v.version + '/node-' + $v.version + '-x64.msi') -OutFile $env:TEMP\gs-node-lts.msi -UseBasicParsing" >nul 2>nul
+if errorlevel 1 goto :baixar_node_falhou
+if not exist "%TEMP%\gs-node-lts.msi" goto :baixar_node_falhou
+exit /b 0
+
+:baixar_node_falhou
+echo.
+echo ERRO: nao consegui baixar o instalador do Node.js.
+echo Verifique a internet e tente de novo, ou baixe manualmente em:
+echo   https://nodejs.org/pt-br/download
+exit /b 1
+
+rem ---------------------------------------------------------------------------
+rem aguardar_node: o wizard pode retornar antes de terminar; confere por ate
+rem 120 segundos se o node.exe apareceu.
+rem ---------------------------------------------------------------------------
+:aguardar_node
+set /a GS_TENT=0
+
+:aguardar_node_loop
+call :detectar_node
+if defined NODE exit /b 0
+set /a GS_TENT+=1
+if %GS_TENT% GEQ 120 exit /b 1
+ping -n 2 127.0.0.1 >nul
+goto :aguardar_node_loop
+
+rem ---------------------------------------------------------------------------
+rem instalar_git: mesma logica do Node. Winget silencioso; fallback com o
+rem instalador oficial do Git for Windows aberto no wizard.
+rem ---------------------------------------------------------------------------
+:instalar_git
+echo.
+where winget >nul 2>nul
+if errorlevel 1 goto :instalar_git_manual
+
+echo Tentando instalar o Git pelo winget...
+winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements --silent
+call :detectar_git
+if defined GIT exit /b 0
+ping -n 3 127.0.0.1 >nul
+call :detectar_git
+if defined GIT exit /b 0
+
+echo.
+echo O winget nao conseguiu instalar o Git.
+echo Tentando o instalador oficial...
+
+:instalar_git_manual
+call :baixar_git_instalador
+if errorlevel 1 exit /b 1
+
+echo.
+echo Abrindo o instalador do Git.
+echo Conclua a instalacao na janela que abrir.
+start "" /wait "%TEMP%\gs-git-installer.exe"
+call :aguardar_git
+if not defined GIT goto :instalar_git_falhou
+
+del /q "%TEMP%\gs-git-installer.exe" >nul 2>nul
+exit /b 0
+
+:instalar_git_falhou
+del /q "%TEMP%\gs-git-installer.exe" >nul 2>nul
+echo.
+echo ERRO: o Git nao foi instalado.
+echo Baixe manualmente em https://git-scm.com/download/win
+exit /b 1
+
+rem ---------------------------------------------------------------------------
+rem baixar_git_instalador: pega a release mais recente do Git for Windows no
+rem GitHub e baixa o instalador 64-bit (nao o Portable).
+rem ---------------------------------------------------------------------------
+:baixar_git_instalador
+echo.
+echo Baixando o instalador do Git para Windows...
+del /q "%TEMP%\gs-git-installer.exe" >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $r=Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers @{'User-Agent'='gs-abrir-gerenciador'}; $a=$r.assets | Where-Object { $_.name -match '^Git-.*-64-bit\.exe$' } | Select-Object -First 1; if (-not $a) { throw 'instalador nao encontrado' }; Invoke-WebRequest -Uri $a.browser_download_url -OutFile $env:TEMP\gs-git-installer.exe -UseBasicParsing" >nul 2>nul
+if errorlevel 1 goto :baixar_git_falhou
+if not exist "%TEMP%\gs-git-installer.exe" goto :baixar_git_falhou
+exit /b 0
+
+:baixar_git_falhou
+echo.
+echo ERRO: nao consegui baixar o instalador do Git.
+echo Verifique a internet e tente de novo, ou instale manualmente em:
+echo   https://git-scm.com/download/win
+exit /b 1
+
+rem ---------------------------------------------------------------------------
+rem aguardar_git: depois do wizard, confere por ate 120 segundos se o Git
+rem apareceu no PATH ou nos caminhos padrao/registro.
+rem ---------------------------------------------------------------------------
+:aguardar_git
+set /a GS_TENT=0
+
+:aguardar_git_loop
+call :detectar_git
+if defined GIT exit /b 0
+set /a GS_TENT+=1
+if %GS_TENT% GEQ 120 exit /b 1
+ping -n 2 127.0.0.1 >nul
+goto :aguardar_git_loop
+
+rem ---------------------------------------------------------------------------
 rem preparar_status: monta o texto e a janela do servidor. A janela fica
 rem aberta com os logs do Next e mostra o resultado da atualizacao no topo.
 rem ---------------------------------------------------------------------------
@@ -332,14 +547,46 @@ if defined STATUS_EXTRA >>"%GS_STATUS%" echo %STATUS_EXTRA%
 exit /b 0
 
 rem ---------------------------------------------------------------------------
+rem detectar_node: define NODE com o caminho do node.exe e coloca essa pasta
+rem no PATH da sessao. O winget pode instalar em outro disco e o PATH desta
+rem janela nao e atualizado automaticamente.
+rem ---------------------------------------------------------------------------
+:detectar_node
+set "NODE="
+set "NODE_DIR="
+for /f "delims=" %%N in ('where node 2^>nul') do if not defined NODE set "NODE=%%N"
+if defined NODE goto :detectar_node_ok
+
+set "NODE_REG="
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = (Get-ItemProperty 'HKLM:\SOFTWARE\Node.js' -ErrorAction SilentlyContinue).InstallPath; if (-not $p) { $p = (Get-ItemProperty 'HKCU:\SOFTWARE\Node.js' -ErrorAction SilentlyContinue).InstallPath }; if (-not $p) { $p = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Node.js' -ErrorAction SilentlyContinue).InstallPath }; if ($p) { $p.TrimEnd('\') }"`) do set "NODE_REG=%%P"
+if defined NODE_REG if exist "%NODE_REG%\node.exe" set "NODE=%NODE_REG%\node.exe"
+if defined NODE goto :detectar_node_ok
+if exist "%ProgramFiles%\nodejs\node.exe" set "NODE=%ProgramFiles%\nodejs\node.exe"
+if defined NODE goto :detectar_node_ok
+if exist "%ProgramFiles(x86)%\nodejs\node.exe" set "NODE=%ProgramFiles(x86)%\nodejs\node.exe"
+if defined NODE goto :detectar_node_ok
+if exist "%LOCALAPPDATA%\Programs\nodejs\node.exe" set "NODE=%LOCALAPPDATA%\Programs\nodejs\node.exe"
+if not defined NODE exit /b 1
+
+:detectar_node_ok
+for %%D in ("%NODE%") do set "NODE_DIR=%%~dpD"
+if defined NODE_DIR set "PATH=%NODE_DIR%%PATH%"
+exit /b 0
+
+rem ---------------------------------------------------------------------------
 rem detectar_git: define GIT com o caminho do executavel.
 rem O winget instala em Program Files, mas a janela atual pode nao ter o PATH
-rem atualizado; por isso confere tambem os caminhos padrao.
+rem atualizado; por isso confere tambem o registro e os caminhos padrao.
 rem ---------------------------------------------------------------------------
 :detectar_git
 set "GIT="
 where git >nul 2>nul
 if not errorlevel 1 set "GIT=git"
+if defined GIT exit /b 0
+
+set "GIT_REG="
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = (Get-ItemProperty 'HKLM:\SOFTWARE\GitForWindows' -ErrorAction SilentlyContinue).InstallPath; if (-not $p) { $p = (Get-ItemProperty 'HKCU:\SOFTWARE\GitForWindows' -ErrorAction SilentlyContinue).InstallPath }; if (-not $p) { $p = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\GitForWindows' -ErrorAction SilentlyContinue).InstallPath }; if ($p) { $p.TrimEnd('\') }"`) do set "GIT_REG=%%P"
+if defined GIT_REG if exist "%GIT_REG%\cmd\git.exe" set "GIT=%GIT_REG%\cmd\git.exe"
 if defined GIT exit /b 0
 if exist "%ProgramFiles%\Git\cmd\git.exe" set "GIT=%ProgramFiles%\Git\cmd\git.exe"
 if defined GIT exit /b 0

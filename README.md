@@ -30,10 +30,12 @@ O mesmo `THEONE_API_SECRET` precisa existir no `.env.local` do site
 
 ## 3. Instalar e rodar
 
-Pré-requisitos: **Node.js 22.13 ou superior** (recomendado: 24 LTS) e **Git**.
-O Git é usado pelo atalho para manter o app atualizado. O repositório é
-privado; o atalho usa o token embutido. Para clonar manualmente, use suas
-credenciais do GitHub.
+Pré-requisitos: **Node.js 22.13 ou superior** (recomendado: LTS atual) e **Git**.
+O atalho instala automaticamente o Node.js LTS e o Git quando eles não estão
+presentes: primeiro tenta o `winget` em modo silencioso e, se não conseguir,
+baixa o instalador oficial e abre o wizard do Windows. A instalação pede
+elevação (UAC). O repositório é privado; o atalho usa o token embutido. Para
+clonar manualmente, use suas credenciais do GitHub.
 
 Em um computador novo:
 
@@ -57,16 +59,17 @@ desse usuário no Supabase.
 
 Dá para abrir e fechar o painel com duplo clique, sem usar o terminal:
 
-- `abrir-gerenciador.bat`: antes de abrir, atualiza o código com `git pull`.
-  Se a pasta ainda não for um clone, transforma em clone na primeira abertura,
-  preservando `overlay.db`, `node_modules` e `public/uploads`. Se a pasta
-  estiver vazia (só com o atalho e os dados locais), baixa o projeto do zero,
-  incluindo o `.env.local`. Se o Git não estiver instalado, oferece instalar
-  pelo `winget`. Se o painel já estiver rodando na 4000, avisa, mostra se há
-  atualização e só abre o navegador. Se o pull falhar (sem internet,
-  alterações locais ou conflito), abre a versão atual mesmo assim. A janela
-  do servidor mostra se a versão foi atualizada, se já estava atual ou se
-  continua desatualizada, com o motivo.
+- `abrir-gerenciador.bat`: antes de abrir, verifica se o Node.js e o Git
+  estão instalados; se faltar, instala o Node.js LTS e o Git para Windows
+  (pelo `winget`; se falhar, pelo instalador oficial). Depois atualiza o
+  código com `git pull`. Se a pasta ainda não for um clone, transforma em
+  clone na primeira abertura, preservando `overlay.db`, `node_modules` e
+  `public/uploads`. Se a pasta estiver vazia (só com o atalho e os dados
+  locais), baixa o projeto do zero, incluindo o `.env.local`. Se o painel já
+  estiver rodando na 4000, avisa, mostra se há atualização e só abre o
+  navegador. Se o pull falhar (sem internet, alterações locais ou conflito),
+  abre a versão atual mesmo assim. A janela do servidor mostra se a versão foi
+  atualizada, se já estava atual ou se continua desatualizada, com o motivo.
 - `fechar-gerenciador.bat`: encerra o que estiver rodando na porta 4000. Se o
   processo não parecer ser o gerenciador, pede confirmação antes de matar.
 
@@ -79,8 +82,8 @@ logs do Next e mostra no topo o resultado da atualização:
 
 1. Crie uma pasta vazia.
 2. Coloque `abrir-gerenciador.bat` dentro dela e execute.
-3. Ele baixa o projeto (com o `.env.local`), roda `npm install` e abre o
-   painel.
+3. Ele instala o Node.js/Git se necessário, baixa o projeto (com o
+   `.env.local`), roda `npm install` e abre o painel.
 
 Se a pasta tiver outros arquivos, o atalho pede confirmação antes de copiar o
 projeto por cima. Ele não apaga `overlay.db` nem `public/uploads`. O
@@ -122,14 +125,16 @@ em `.backup-antigo` (incluindo `.env.local` e o `.bat` antigos).
 
 ### Cliente novo
 
-1. Instale **Node.js 22.13+** e **Git** (o atalho também oferece instalar o Git).
+1. Tenha **Node.js 22.13+** e **Git**; se faltarem, o próprio atalho instala
+   o Node.js LTS e o Git para Windows.
 2. Crie uma pasta e coloque o `abrir-gerenciador.bat`.
 3. Execute o atalho; ele baixa o projeto (com o `.env.local`), roda
    `npm install` e abre o painel.
 
 ### Cliente que já tem o gerenciador (uma vez)
 
-1. Instale o Git (o atalho novo também oferece instalar pelo `winget`).
+1. Tenha o Git instalado; se faltar, o atalho novo instala automaticamente
+   (pelo `winget` ou pelo instalador oficial).
 2. Substitua o `abrir-gerenciador.bat` pelo novo (basta enviar esse arquivo).
 3. Abra o atalho; ele transforma a pasta em clone e atualiza o código,
    incluindo o `.env.local`. Depois dessa primeira vez, o próprio atalho se
