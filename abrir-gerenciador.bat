@@ -48,6 +48,8 @@ set "PASTA=%~2"
 if not defined PASTA goto :erro_pasta
 
 :inicio
+rem Garante as pastas do Windows no PATH (alguns PCs estao sem System32).
+set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\Wbem;%SystemRoot%\System32\WindowsPowerShell\v1.0;%PATH%"
 cd /d "%PASTA%" 2>nul
 if errorlevel 1 goto :erro_pasta
 
@@ -69,6 +71,8 @@ if /i "%GIT_TOKEN%"=="SEU_TOKEN_AQUI" (
 )
 
 set "LOG_GIT=%TEMP%\gs-git-erro.txt"
+set "GS_DET=%TEMP%\gs-git-detalhe.txt"
+del /q "%GS_DET%" >nul 2>nul
 set "GIT_TERMINAL_PROMPT=0"
 set "GCM_INTERACTIVE=Never"
 set "NODE="
@@ -536,6 +540,11 @@ set "GS_STATUS=%TEMP%\gs-status.txt"
 if defined STATUS_DETALHE >>"%GS_STATUS%" echo %STATUS_DETALHE%
 if defined STATUS_AVISO >>"%GS_STATUS%" echo %STATUS_AVISO%
 if defined STATUS_EXTRA >>"%GS_STATUS%" echo %STATUS_EXTRA%
+if exist "%GS_DET%" (
+  >>"%GS_STATUS%" echo.
+  >>"%GS_STATUS%" echo Erro do Git ^(token oculto^):
+  type "%GS_DET%" >>"%GS_STATUS%"
+)
 >>"%GS_STATUS%" echo.
 >>"%GS_STATUS%" echo Iniciando o servidor...
 >>"%GS_STATUS%" echo.
@@ -609,7 +618,7 @@ echo.
 echo ---- Detalhes do Git ----
 set "GS_LOG=%LOG_GIT%"
 set "GS_TOKEN=%GIT_TOKEN%"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=$env:GS_LOG; $t=$env:GS_TOKEN; if (Test-Path -LiteralPath $p) { $l = @(Get-Content -LiteralPath $p -ErrorAction SilentlyContinue); if ($t) { $l = $l | ForEach-Object { $_.Replace($t,'***') } }; if ($l.Count -gt 0) { $l | Select-Object -Last 20 } else { '(sem detalhes)' } } else { '(sem detalhes)' }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=$env:GS_LOG; $t=$env:GS_TOKEN; $d=$env:GS_DET; $o=@('(sem detalhes)'); if (Test-Path -LiteralPath $p) { $l = @(Get-Content -LiteralPath $p -ErrorAction SilentlyContinue); if ($t) { $l = @($l | ForEach-Object { $_.Replace($t,'***') }) }; if ($l.Count -gt 0) { $o = @($l | Select-Object -Last 20) } }; Set-Content -LiteralPath $d -Value $o; $o"
 set "GS_TOKEN="
 set "GS_LOG="
 echo -------------------------
@@ -855,8 +864,8 @@ if not exist "%CLONE%\lib\overlay.ts" goto :bootstrap_invalido
 del /q "%LOG_GIT%" >nul 2>nul
 
 echo Copiando os arquivos...
-robocopy "%CLONE%" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
-if errorlevel 8 goto :bootstrap_falhou
+call :copiar "%CLONE%" "%CD%"
+if errorlevel 1 goto :bootstrap_falhou
 if not exist "package.json" goto :bootstrap_falhou
 if not exist "app\layout.tsx" goto :bootstrap_falhou
 if not exist "lib\overlay.ts" goto :bootstrap_falhou
@@ -922,8 +931,8 @@ if not exist "lib\overlay.ts" goto :adotar_nao_e
 
 echo Fazendo backup da versao atual em .backup-antigo...
 if exist ".backup-antigo" rd /s /q ".backup-antigo" >nul 2>nul
-robocopy "%CD%" "%CD%\.backup-antigo" /E /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.git" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
-if errorlevel 8 (
+call :copiar "%CD%" "%CD%\.backup-antigo" semgit
+if errorlevel 1 (
   echo AVISO: nao consegui fazer o backup. Nada foi alterado.
   set "STATUS_VERSAO=Versao NAO VERIFICADA: nao foi possivel preparar a atualizacao"
   set "STATUS_DETALHE=Nao consegui fazer o backup da pasta."
@@ -953,8 +962,8 @@ taskkill /FI "WINDOWTITLE eq Gerenciador Simples - Dev*" /T /F >nul 2>nul
 ping -n 3 127.0.0.1 >nul
 
 for %%D in (app components lib) do if exist "%%D" rd /s /q "%%D" >nul 2>nul
-robocopy "%CLONE%" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
-if errorlevel 8 goto :adotar_restaurar
+call :copiar "%CLONE%" "%CD%"
+if errorlevel 1 goto :adotar_restaurar
 if not exist "package.json" goto :adotar_restaurar
 if not exist "app\layout.tsx" goto :adotar_restaurar
 if not exist ".git\HEAD" goto :adotar_restaurar
@@ -992,8 +1001,8 @@ goto :adotar_falhou
 echo.
 echo ERRO ao aplicar a atualizacao. Restaurando o backup...
 if exist ".git" rd /s /q ".git" >nul 2>nul
-robocopy "%CD%\.backup-antigo" "%CD%" /E /IS /IT /XD "%CD%\node_modules" "%CD%\.next" "%CD%\.backup-antigo" "%CD%\public\uploads" /XF token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
-if errorlevel 8 (
+call :copiar "%CD%\.backup-antigo" "%CD%"
+if errorlevel 1 (
   echo.
   echo ATENCAO: a restauracao tambem falhou.
   echo Copie os arquivos de volta manualmente de:
@@ -1088,3 +1097,44 @@ rem Retorna errorlevel 0 se alguem estiver escutando na porta, 1 se estiver livr
 :porta_ocupada
 powershell -NoProfile -ExecutionPolicy Bypass -Command "if (Get-NetTCPConnection -LocalPort %PORTA% -State Listen -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }" >nul 2>nul
 exit /b %errorlevel%
+
+rem ---------------------------------------------------------------------------
+rem copiar: copia uma pasta inteira (origem, destino, [semgit]) sem tocar nos
+rem dados locais. Usa o robocopy; se ele nao existir, usa o xcopy.
+rem Retorna 0 em sucesso e 1 em falha.
+rem ---------------------------------------------------------------------------
+:copiar
+set "CP_O=%~1"
+set "CP_D=%~2"
+set "CP_GIT="
+if /i "%~3"=="semgit" set "CP_GIT=1"
+if exist "%SystemRoot%\System32\robocopy.exe" goto :copiar_robocopy
+if exist "%SystemRoot%\System32\xcopy.exe" goto :copiar_xcopy
+echo.
+echo ERRO: nao encontrei o robocopy nem o xcopy do Windows neste computador.
+exit /b 1
+
+:copiar_robocopy
+if defined CP_GIT goto :copiar_robocopy_semgit
+"%SystemRoot%\System32\robocopy.exe" "%CP_O%" "%CP_D%" /E /IS /IT /XD "%CP_O%\node_modules" "%CP_O%\.next" "%CP_O%\.backup-antigo" "%CP_O%\public\uploads" "%CP_D%\node_modules" "%CP_D%\.next" "%CP_D%\.backup-antigo" "%CP_D%\public\uploads" /XF token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
+goto :copiar_robocopy_fim
+
+:copiar_robocopy_semgit
+"%SystemRoot%\System32\robocopy.exe" "%CP_O%" "%CP_D%" /E /IS /IT /XD "%CP_O%\node_modules" "%CP_O%\.next" "%CP_O%\.backup-antigo" "%CP_O%\public\uploads" "%CP_O%\.git" /XF token.dat overlay.db overlay.db-shm overlay.db-wal /NFL /NDL /NJH /NJS /NP >nul
+
+:copiar_robocopy_fim
+if errorlevel 8 exit /b 1
+exit /b 0
+
+:copiar_xcopy
+set "CP_EXC=%TEMP%\gs-excluir.txt"
+> "%CP_EXC%" echo \node_modules\
+>>"%CP_EXC%" echo \.next\
+>>"%CP_EXC%" echo \.backup-antigo\
+>>"%CP_EXC%" echo \public\uploads\
+>>"%CP_EXC%" echo \token.dat
+>>"%CP_EXC%" echo \overlay.db
+if defined CP_GIT >>"%CP_EXC%" echo \.git\
+"%SystemRoot%\System32\xcopy.exe" "%CP_O%\*" "%CP_D%\" /E /I /Y /H /R /Q /EXCLUDE:%CP_EXC% >nul
+if errorlevel 1 exit /b 1
+exit /b 0
