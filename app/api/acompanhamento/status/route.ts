@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { autoVincularContaDetectada } from '@/lib/autoVinculo';
 import { getDb } from '@/lib/db';
 import { getEstadoGsi } from '@/lib/gsi';
 import { listarContasPedidos } from '@/lib/pedidoContas';
@@ -14,6 +15,10 @@ export const dynamic = 'force-dynamic';
 // Rota autenticada (o proxy exige sessão); usada pela página de Acompanhamento.
 export async function GET() {
   const db = getDb();
+  // Mantém o vínculo automático atualizado enquanto o Acompanhamento estiver
+  // aberto, sem depender de recarregar a página. O resultado é devolvido para
+  // a tela atualizar os componentes renderizados no servidor (aviso de conta).
+  const autoVinculo = await autoVincularContaDetectada(db).catch(() => null);
   return NextResponse.json(
     {
       gsi: getEstadoGsi(),
@@ -21,6 +26,7 @@ export async function GET() {
       pedidoSelecionadoTipo: getPedidoSelecionadoTipo(db),
       contas: listarContasPedidos(db),
       pendentes: resumoPendentes(db),
+      autoVinculo,
     },
     { headers: { 'Cache-Control': 'no-store' } }
   );

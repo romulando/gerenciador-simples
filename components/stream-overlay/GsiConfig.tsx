@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Check, ClipboardCopy, Download, RefreshCw } from 'lucide-react';
 import Alerta from '@/components/ui/Alerta';
 import { copiarTexto } from '@/lib/clipboard';
@@ -12,6 +13,7 @@ interface GsiVerificacao {
   status: StatusGsiInstalado;
   arquivoDoApp: boolean;
   uriInstalada: string | null;
+  outrosArquivos: string[];
 }
 
 interface GsiConfigResposta {
@@ -21,35 +23,112 @@ interface GsiConfigResposta {
   conteudo: string;
   localizacao: {
     encontrado: boolean;
+    steamPath: string | null;
     cfgDir: string | null;
+    gsiDir: string | null;
+    arquivoPath: string | null;
     arquivoInstalado: boolean;
     caminhosTestados: string[];
   };
   verificacao?: GsiVerificacao;
 }
 
+interface GsiStatusResposta {
+  gsi: {
+    online: boolean;
+    ultimoContatoEm: number | null;
+    ultimoErroPartida?: string;
+  };
+  autoVinculo?: {
+    vinculado: boolean;
+  } | null;
+}
+
+function formatarContato(ms: number | null): string {
+  if (!ms) return 'nunca';
+  const segundos = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (segundos < 60) return `há ${segundos}s`;
+  const minutos = Math.floor(segundos / 60);
+  if (minutos < 60) return `há ${minutos}min`;
+  const horas = Math.floor(minutos / 60);
+  return `há ${horas}h`;
+}
+
+function Info({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-2.5">
+      <p className="text-gray-500">{rotulo}</p>
+      <p className="mt-0.5 break-all font-mono text-gray-200">{valor}</p>
+    </div>
+  );
+}
+
+function rotuloToken(verificacao?: GsiVerificacao): string {
+  switch (verificacao?.status) {
+    case 'ok':
+      return 'Confere';
+    case 'desatualizado':
+      return 'Confere (versão antiga)';
+    case 'outro_app':
+      return 'Não confere';
+    case 'ilegivel':
+      return 'Não foi possível ler';
+    case 'ausente':
+      return 'Arquivo ausente';
+    default:
+      return '—';
+  }
+}
+
 export default function GsiConfig() {
+  const router = useRouter();
   const [config, setConfig] = useState<GsiConfigResposta | null>(null);
+  const [gsiOnline, setGsiOnline] = useState(false);
+  const [ultimoContatoEm, setUltimoContatoEm] = useState<number | null>(null);
+  const [ultimoErroPartida, setUltimoErroPartida] = useState('');
+  const [statusPronto, setStatusPronto] = useState(false);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [copiado, setCopiado] = useState(false);
+  const [copiouCaminho, setCopiouCaminho] = useState(false);
   const [instalando, setInstalando] = useState(false);
   // Mantém o card no ar por alguns segundos depois de instalar, para o aviso
-  // de sucesso não desaparecer junto (instalado = card escondido).
+  // de sucesso não desaparecer junto (instalado + conectado = card escondido).
   const [mostrandoAviso, setMostrandoAviso] = useState(false);
   const avisoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const carregar = useCallback(async () => {
-    setErro('');
+  const carregar = useCallback(async (silencioso = false) => {
+    if (!silencioso) setErro('');
     try {
-      setConfig(await buscarJson<GsiConfigResposta>('/api/acompanhamento/gsi-config'));
+      const cfg = await buscarJson<GsiConfigResposta>('/api/acompanhamento/gsi-config');
+      setConfig(cfg);
     } catch (e) {
-      setErro((e as Error).message);
+      if (!silencioso) setErro((e as Error).message);
+      return;
     }
-  }, []);
+
+    // O status é acessório: se falhar, o card ainda mostra a configuração.
+    try {
+      const status = await buscarJson<GsiStatusResposta>('/api/acompanhamento/status', {
+        signal: AbortSignal.timeout(6_000),
+      });
+      setGsiOnline(Boolean(status.gsi.online));
+      setUltimoContatoEm(status.gsi.ultimoContatoEm ?? null);
+      setUltimoErroPartida(status.gsi.ultimoErroPartida ?? '');
+      if (status.autoVinculo?.vinculado) router.refresh();
+    } catch {
+      // silencioso
+    } finally {
+      setStatusPronto(true);
+    }
+  }, [router]);
 
   useEffect(() => {
     void carregar();
+    // Enquanto o card estiver visível, acompanha o GSI para sair de
+    // "aguardando" sem precisar recarregar a página.
+    const timer = setInterval(() => void carregar(true), 10_000);
+    return () => clearInterval(timer);
   }, [carregar]);
 
   useEffect(
@@ -69,6 +148,17 @@ export default function GsiConfig() {
     setTimeout(() => setCopiado(false), 1600);
   }
 
+  async function copiarCaminho() {
+    const caminho = config?.localizacao.arquivoPath ?? config?.localizacao.cfgDir ?? '';
+    if (!caminho) return;
+    if (!(await copiarTexto(caminho))) {
+      setErro('Não foi possível copiar o caminho.');
+      return;
+    }
+    setCopiouCaminho(true);
+    setTimeout(() => setCopiouCaminho(false), 1600);
+  }
+
   async function instalar() {
     setInstalando(true);
     setErro('');
@@ -86,7 +176,7 @@ export default function GsiConfig() {
         avisoTimerRef.current = setTimeout(() => {
           setAviso('');
           setMostrandoAviso(false);
-        }, 4000);
+        }, 5000);
       } else {
         setErro(res.error || 'Não foi possível instalar automaticamente.');
       }
@@ -97,14 +187,10 @@ export default function GsiConfig() {
     }
   }
 
-  // Card só aparece enquanto o GSI deste painel não estiver instalado. O nome
-  // do .cfg é o mesmo usado por outros gerenciadores, então além de existir o
-  // conteúdo precisa ser o nosso (uri + token). Durante o carregamento inicial
-  // também não renderiza, para não piscar na tela; o aviso pós-instalação
-  // segura o card por alguns segundos.
+  // O card só some quando o arquivo é deste painel E o Dota já enviou dados.
+  // Arquivo instalado sem payload é justamente o caso em que o usuário precisa
+  // do diagnóstico, então o card continua visível.
   const verificacao = config?.verificacao;
-  // A verificação lê o arquivo na hora; ela manda mais que o `arquivoInstalado`
-  // (que vem do cache de detecção da pasta).
   const arquivoExiste = verificacao
     ? verificacao.status !== 'ausente'
     : Boolean(config?.localizacao.arquivoInstalado);
@@ -113,11 +199,24 @@ export default function GsiConfig() {
     arquivoExiste && verificacao && !verificacao.arquivoDoApp
   );
   const precisaAtualizar = verificacao?.status === 'desatualizado';
+  const aguardando = !gsiOnline;
+  const outrosArquivos = verificacao?.outrosArquivos ?? [];
+
   if (!config && !erro) return null;
-  if (instalado && !mostrandoAviso) return null;
+  // Evita piscar o card enquanto o status do GSI ainda não chegou.
+  if (config && !statusPronto) return null;
+  if (instalado && !mostrandoAviso && !aguardando) return null;
+
+  const caminhoArquivo =
+    config?.localizacao.arquivoPath ??
+    config?.localizacao.cfgDir ??
+    'Dota 2 não localizado automaticamente';
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-xl">
+    <div
+      id="gsi-config"
+      className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-xl"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-gray-100">GSI do Dota 2</h2>
         <button
@@ -164,20 +263,34 @@ export default function GsiConfig() {
           “Atualizar GSI” para aplicar a configuração atual e reinicie o Dota 2.
         </Alerta>
       )}
+      {instalado && aguardando && (
+        <Alerta tipo="aviso" className="mt-3">
+          O arquivo do GSI está instalado, mas o Dota 2 ainda não enviou nenhum dado para este
+          painel. Se ele já estiver aberto, feche e abra de novo depois de instalar. O diagnóstico
+          abaixo mostra o caminho e o último contato.
+        </Alerta>
+      )}
+      {ultimoErroPartida && (
+        <Alerta tipo="erro" className="mt-3">
+          {ultimoErroPartida}
+        </Alerta>
+      )}
 
       {config && (
         <div className="mt-3 space-y-3">
           <div className="grid gap-2 text-xs sm:grid-cols-2">
-            <div className="rounded-xl border border-white/10 bg-black/20 p-2.5">
-              <p className="text-gray-500">Arquivo</p>
-              <p className="mt-0.5 font-mono text-gray-200">{config.nomeArquivo}</p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-black/20 p-2.5">
-              <p className="text-gray-500">Destino</p>
-              <p className="mt-0.5 break-all font-mono text-gray-200">
-                {config.localizacao.cfgDir ?? 'Dota 2 não localizado automaticamente'}
-              </p>
-            </div>
+            <Info
+              rotulo="Status do GSI"
+              valor={gsiOnline ? 'Conectado' : 'Aguardando dados do Dota'}
+            />
+            <Info rotulo="Último contato" valor={formatarContato(ultimoContatoEm)} />
+            <Info rotulo="Arquivo" valor={caminhoArquivo} />
+            <Info rotulo="URI esperada" valor={config.uri} />
+            <Info rotulo="Token" valor={rotuloToken(verificacao)} />
+            <Info
+              rotulo="Outros .cfg na pasta"
+              valor={outrosArquivos.length > 0 ? outrosArquivos.join(', ') : 'Nenhum'}
+            />
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -190,7 +303,9 @@ export default function GsiConfig() {
                     ? 'Substituir GSI instalado'
                     : precisaAtualizar
                       ? 'Atualizar GSI'
-                      : 'Instalar na pasta do Dota 2'}
+                      : instalado
+                        ? 'Reinstalar GSI'
+                        : 'Instalar na pasta do Dota 2'}
               </span>
             </button>
             <button type="button" onClick={() => void copiar()} className={btnSecondary}>
@@ -203,7 +318,39 @@ export default function GsiConfig() {
                 {copiado ? 'Copiado!' : 'Copiar .cfg'}
               </span>
             </button>
+            <button
+              type="button"
+              onClick={() => void copiarCaminho()}
+              className={btnSecondary}
+              disabled={!config.localizacao.arquivoPath && !config.localizacao.cfgDir}
+            >
+              <span className="flex items-center gap-1.5">
+                {copiouCaminho ? (
+                  <Check className="h-4 w-4 text-green-400" />
+                ) : (
+                  <ClipboardCopy className="h-4 w-4" />
+                )}
+                {copiouCaminho ? 'Caminho copiado!' : 'Copiar caminho'}
+              </span>
+            </button>
           </div>
+
+          {aguardando && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[11px] leading-relaxed text-amber-100">
+              <p className="font-semibold text-amber-200">
+                Se continuar em “aguardando”, confira:
+              </p>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                <li>a janela preta do servidor precisa ficar aberta enquanto joga;</li>
+                <li>o painel precisa estar no mesmo PC do Dota 2;</li>
+                <li>feche o Dota completamente e abra de novo depois de instalar o GSI;</li>
+                <li>confira se o caminho acima é a pasta do Dota que você abre;</li>
+                <li>se houver outro .cfg na pasta, clique em “Reinstalar GSI”;</li>
+                <li>libere o Node.js/porta 4000 no firewall ou antivírus se necessário;</li>
+                <li>acesse o painel por localhost:4000, não pelo IP da rede.</li>
+              </ul>
+            </div>
+          )}
 
           <details className="rounded-xl border border-white/10 bg-black/20 p-2.5">
             <summary className="cursor-pointer text-xs text-gray-400">

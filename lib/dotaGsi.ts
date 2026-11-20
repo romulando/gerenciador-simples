@@ -20,7 +20,11 @@ const STEAM_COMUNS = [
   'F:\\Steam',
   'C:\\Program Files\\Steam',
   'D:\\Program Files\\Steam',
-];
+  // Instalação por usuário (Steam baixado pelo site, sem admin).
+  process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Steam')
+    : '',
+].filter((pasta) => pasta.length > 0);
 
 export interface DotaLocalizacao {
   encontrado: boolean;
@@ -49,6 +53,8 @@ export interface VerificacaoGsi {
   status: StatusGsiInstalado;
   arquivoDoApp: boolean;
   uriInstalada: string | null;
+  // Outros arquivos .cfg na mesma pasta (outros overlays/gerenciadores).
+  outrosArquivos: string[];
 }
 
 // Cache curto da detecção (evita varrer drives a cada poll da aba).
@@ -92,6 +98,20 @@ function existe(p: string): boolean {
   }
 }
 
+// Outros .cfg de GSI na pasta. Ajuda a diagnosticar conflito com outro
+// gerenciador/overlay que também envia dados para uma porta diferente.
+function listarOutrosCfg(gsiDir: string | null): string[] {
+  if (!gsiDir) return [];
+  try {
+    return fs
+      .readdirSync(gsiDir)
+      .filter((nome) => /\.cfg$/i.test(nome))
+      .filter((nome) => nome.toLowerCase() !== GSI_ARQUIVO.toLowerCase());
+  } catch {
+    return [];
+  }
+}
+
 // Reúne possíveis raízes de bibliotecas: caminhos comuns + libraryfolders.vdf + drives.
 function reunirBases(): string[] {
   const bases = new Set<string>();
@@ -109,6 +129,8 @@ function reunirBases(): string[] {
         `${letra}:\\Steam`,
         `${letra}:\\Games\\SteamLibrary`,
         `${letra}:\\Jogos\\SteamLibrary`,
+        `${letra}:\\Games\\Steam`,
+        `${letra}:\\Jogos\\Steam`,
       ]) {
         if (existe(p)) bases.add(p);
       }
@@ -219,15 +241,27 @@ export function verificarGsiInstalado(
   uriEsperada: string,
   tokenEsperado: string
 ): VerificacaoGsi {
+  const outrosArquivos = listarOutrosCfg(localizacao.gsiDir);
+
   if (!localizacao.arquivoPath || !existe(localizacao.arquivoPath)) {
-    return { status: 'ausente', arquivoDoApp: false, uriInstalada: null };
+    return {
+      status: 'ausente',
+      arquivoDoApp: false,
+      uriInstalada: null,
+      outrosArquivos,
+    };
   }
 
   let conteudo: string;
   try {
     conteudo = fs.readFileSync(localizacao.arquivoPath, 'utf8');
   } catch {
-    return { status: 'ilegivel', arquivoDoApp: false, uriInstalada: null };
+    return {
+      status: 'ilegivel',
+      arquivoDoApp: false,
+      uriInstalada: null,
+      outrosArquivos,
+    };
   }
 
   const uriInstalada = extrairValorGsi(conteudo, 'uri');
@@ -240,6 +274,7 @@ export function verificarGsiInstalado(
       status: 'outro_app',
       arquivoDoApp: false,
       uriInstalada,
+      outrosArquivos,
     };
   }
 
@@ -253,6 +288,7 @@ export function verificarGsiInstalado(
     status: atualizado ? 'ok' : 'desatualizado',
     arquivoDoApp: true,
     uriInstalada,
+    outrosArquivos,
   };
 }
 

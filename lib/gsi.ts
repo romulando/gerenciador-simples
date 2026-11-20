@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { getConfigValor, setConfigValor } from './config';
 import { getDb } from './db';
-import { agoraLocal } from './helpers';
+import { agoraLocal, ehServicoDuo } from './helpers';
 import { registrarEventoOverlay } from './overlayEventos';
 import { aoEstadoGsi } from './obsCenas';
 import { accountIdDeSteamId } from './contaDota';
@@ -13,6 +13,7 @@ import {
   setPedidoSelecionado,
 } from './pedidoSelecionado';
 import {
+  getContaPedido,
   getContaPedidoTipo,
   listarContasPedidos,
   resolverPedidoDaPartida,
@@ -37,10 +38,16 @@ interface EstadoGsiInterno {
   deaths: number;
   assists: number;
   clock: number;
+  ultimoClock: number;
+  teamName: string;
+  winTeam: string;
+  winTeamMatchId: string;
   iniciadaEm: string | null;
   partidaContada: boolean;
   ultimaPartida: { id: number; matchId: string | null; resultado: string; hero: string } | null;
   ultimaContaEvento: string;
+  ultimoErroPartida: string;
+  ultimoPostGameMatchId: string;
   silencioTratado: boolean;
 }
 
@@ -62,10 +69,16 @@ function estadoInterno(): EstadoGsiInterno {
       deaths: 0,
       assists: 0,
       clock: 0,
+      ultimoClock: 0,
+      teamName: '',
+      winTeam: '',
+      winTeamMatchId: '',
       iniciadaEm: null,
       partidaContada: false,
       ultimaPartida: null,
       ultimaContaEvento: '',
+      ultimoErroPartida: '',
+      ultimoPostGameMatchId: '',
       silencioTratado: false,
     };
   }
@@ -139,6 +152,7 @@ export interface EstadoGsi {
   iniciadaEm: string | null;
   emPartida: boolean;
   ultimaPartida: { id: number; matchId: string | null; resultado: string; hero: string } | null;
+  ultimoErroPartida: string;
 }
 
 export function getEstadoGsi(): EstadoGsi {
@@ -158,6 +172,7 @@ export function getEstadoGsi(): EstadoGsi {
     iniciadaEm: s.iniciadaEm,
     emPartida: s.gameState === 'DOTA_GAMERULES_STATE_GAME_IN_PROGRESS',
     ultimaPartida: s.ultimaPartida,
+    ultimoErroPartida: s.ultimoErroPartida,
   };
 }
 
@@ -228,9 +243,10 @@ function salvarPartida(
   };
 }
 
-// Conta detectada: registra o evento e, se ainda não há pedido selecionado,
-// seleciona automaticamente o único pedido vinculado a ela. Para duo/grupo a
-// seleção é manual (o booster joga na própria conta).
+// Conta detectada: registra o evento e reconcilia o pedido selecionado com a
+// conta logada. Duo/grupo continua manual (o booster joga na própria conta);
+// solo passa a seguir o único pedido vinculado à conta, mesmo que exista uma
+// seleção antiga de outro pedido.
 function sincronizarSelecaoPorConta(db: DatabaseSync, conta: string): void {
   if (!conta) return;
   const s = estadoInterno();
@@ -248,16 +264,88 @@ function sincronizarSelecaoPorConta(db: DatabaseSync, conta: string): void {
     );
   }
 
-  if (getPedidoSelecionado(db)) return;
-  const contas = listarContasPedidos(db).filter((c) => c.accountId === conta);
-  if (contas.length !== 1) return;
-  setPedidoSelecionado(db, contas[0].trackingId, contas[0].tipoServico);
-  registrarEventoOverlay(
-    db,
-    'vinculo_auto',
-    `Pedido ${contas[0].trackingId} selecionado automaticamente pela conta ${conta}`,
-    { accountId: conta, trackingId: contas[0].trackingId, tipoServico: contas[0].tipoServico }
+  const selecionado = getPedidoSelecionado(db);
+  const tipoSelecionado =
+    getPedidoSelecionadoTipo(db) ||
+    (selecionado ? getContaPedidoTipo(db, selecionado) : '');
+
+  // Duo/grupo é escolha manual: o booster joga na própria conta.
+  if (selecionado && ehServicoDuo(tipoSelecionado)) return;
+
+  const contas = listarContasPedidos(db).filter(
+    (c) => c.accountId === conta && !ehServicoDuo(c.tipoServico)
   );
+
+  if (contas.length === 1) {
+    const alvo = contas[0];
+    if (selecionado !== alvo.trackingId) {
+      setPedidoSelecionado(db, alvo.trackingId, alvo.tipoServico);
+      registrarEventoOverlay(
+        db,
+        'vinculo_auto',
+        `Pedido ${alvo.trackingId} selecionado automaticamente pela conta ${conta}`,
+        {
+          accountId: conta,
+          trackingId: alvo.trackingId,
+          tipoServico: alvo.tipoServico,
+        }
+      );
+    }
+    return;
+  }
+
+  // Sem vínculo único para a conta: se a seleção é solo de outra conta,
+  // limpa para a overlay não ficar presa em um pedido errado.
+  const contaSelecionada = selecionado ? getContaPedido(db, selecionado) : '';
+  if (
+    selecionado &&
+    !ehServicoDuo(tipoSelecionado) &&
+    contaSelecionada &&
+    contaSelecionada !== conta
+  ) {
+    setPedidoSelecionado(db, '', '');
+    registrarEventoOverlay(
+      db,
+      'vinculo_auto',
+      `Pedido ${selecionado} limpo: a conta logada (${conta}) é diferente da conta do pedido (${contaSelecionada}).`,
+      {
+        accountId: conta,
+        trackingIdAnterior: selecionado,
+        contaAnterior: contaSelecionada,
+      }
+    );
+  }
+}
+
+// account_id do jogador local. O Dota 2 pode mandar o account_id de 32 bits em
+// player.accountid ou o SteamID64 em player.steamid; aceita os dois formatos.
+function accountIdDoPlayer(player: Record<string, unknown>): string {
+  const accountId = String(player.accountid ?? '').replace(/\D/g, '');
+  if (accountId) return accountId;
+  const steamId = String(player.steamid ?? '').trim();
+  if (/^\d{1,15}$/.test(steamId)) return steamId;
+  return accountIdDeSteamId(steamId);
+}
+
+// Resultado da partida: usa win_team/team_name e, se o Dota não mandar o
+// vencedor no payload final, cai para o placar radiant/dire.
+function resultadoDaPartida(
+  winTeam: string,
+  playerTeam: string,
+  map: Record<string, unknown>
+): 'W' | 'L' | null {
+  if (winTeam && winTeam !== 'none' && playerTeam) {
+    return winTeam === playerTeam ? 'W' : 'L';
+  }
+
+  const radiant = Number(map.radiant_score);
+  const dire = Number(map.dire_score);
+  if (playerTeam && Number.isFinite(radiant) && Number.isFinite(dire) && radiant !== dire) {
+    const vencedor = radiant > dire ? 'radiant' : 'dire';
+    return vencedor === playerTeam ? 'W' : 'L';
+  }
+
+  return null;
 }
 
 // Processa o payload GSI: estado ao vivo, cenas e salvamento de partidas.
@@ -308,13 +396,20 @@ export function processarGsi(payload: PayloadGsi): void {
   s.deaths = Number(player.deaths) || 0;
   s.assists = Number(player.assists) || 0;
   s.clock = Number(map.clock_time) || 0;
+  if (s.clock > 0) s.ultimoClock = s.clock;
+
+  const teamName = String(player.team_name ?? '').toLowerCase();
+  if (teamName) s.teamName = teamName;
+  const winTeam = String(map.win_team ?? '').toLowerCase();
+  if (winTeam && winTeam !== 'none') {
+    s.winTeam = winTeam;
+    s.winTeamMatchId = s.matchId ?? '';
+  }
 
   const steamId = String(player.steamid ?? '');
-  if (steamId) {
-    s.steamId = steamId;
-    const acc = accountIdDeSteamId(steamId);
-    if (acc) s.accountId = acc;
-  }
+  if (steamId) s.steamId = steamId;
+  const acc = accountIdDoPlayer(player);
+  if (acc) s.accountId = acc;
   if (s.accountId) sincronizarSelecaoPorConta(db, s.accountId);
 
   const activity = String(player.activity ?? '').toLowerCase();
@@ -331,6 +426,12 @@ export function processarGsi(payload: PayloadGsi): void {
       s.partidaContada = false;
       s.matchId = null;
       s.ultimaPartida = null;
+      s.ultimoClock = 0;
+      s.teamName = '';
+      s.winTeam = '';
+      s.winTeamMatchId = '';
+      s.ultimoErroPartida = '';
+      s.ultimoPostGameMatchId = '';
     } else if (gameState === 'DOTA_GAMERULES_STATE_PRE_GAME') {
       s.partidaContada = false;
       if (!s.iniciadaEm) s.iniciadaEm = new Date().toISOString();
@@ -338,13 +439,36 @@ export function processarGsi(payload: PayloadGsi): void {
   }
 
   if (gameState === 'DOTA_GAMERULES_STATE_POST_GAME') {
-    const winTeam = String(map.win_team ?? '').toLowerCase();
-    const playerTeam = String(player.team_name ?? '').toLowerCase();
-    if (matchIdValidoGsi(s.matchId) && winTeam && playerTeam && !s.partidaContada) {
+    // O payload final pode vir sem win_team/team_name; usa o que foi guardado
+    // durante a partida e, por último, o placar radiant/dire.
+    const win = String(map.win_team ?? '').toLowerCase();
+    const team = String(player.team_name ?? '').toLowerCase();
+    const winGuardado =
+      s.matchId && s.winTeamMatchId === s.matchId ? s.winTeam : '';
+    const resultado = resultadoDaPartida(
+      win && win !== 'none' ? win : winGuardado,
+      team || s.teamName,
+      map
+    );
+
+    if (matchIdValidoGsi(s.matchId) && !resultado && !s.partidaContada) {
+      if (s.ultimoPostGameMatchId !== String(s.matchId)) {
+        s.ultimoPostGameMatchId = String(s.matchId);
+        s.ultimoErroPartida =
+          'Fim de partida detectado, mas o Dota não enviou vencedor/time/placar. A partida não foi salva.';
+        registrarEventoOverlay(db, 'gsi_erro_partida', s.ultimoErroPartida, {
+          matchId: s.matchId,
+          mapKeys: Object.keys(map),
+          playerKeys: Object.keys(player),
+        });
+      }
+    } else if (matchIdValidoGsi(s.matchId) && resultado && !s.partidaContada) {
       s.partidaContada = true;
-      const resultado = winTeam === playerTeam ? 'W' : 'L';
+      s.ultimoErroPartida = '';
       const selecionado = getPedidoSelecionado(db);
-      const tipoSelecionado = getPedidoSelecionadoTipo(db);
+      const tipoSelecionado =
+        getPedidoSelecionadoTipo(db) ||
+        (selecionado ? getContaPedidoTipo(db, selecionado) : '');
       // Atribui a partida ao pedido selecionado (duo/grupo) ou à conta do Dota.
       const trackingId = resolverPedidoDaPartida(
         db,
@@ -358,6 +482,7 @@ export function processarGsi(payload: PayloadGsi): void {
           : getContaPedidoTipo(db, trackingId)
         : '';
       const finalizadaEm = agoraLocal();
+      const duracao = s.clock > 0 ? s.clock : s.ultimoClock;
       const partida = salvarPartida(db, {
         matchId: s.matchId,
         accountId: s.accountId,
@@ -368,7 +493,7 @@ export function processarGsi(payload: PayloadGsi): void {
         kills: s.kills,
         deaths: s.deaths,
         assists: s.assists,
-        duracao: s.clock,
+        duracao,
         iniciadaEm: s.iniciadaEm,
         finalizadaEm,
         fonte: 'gsi',
@@ -386,7 +511,7 @@ export function processarGsi(payload: PayloadGsi): void {
         kills: s.kills,
         deaths: s.deaths,
         assists: s.assists,
-        duracao: s.clock,
+        duracao,
         iniciadaEm: s.iniciadaEm,
         finalizadaEm,
       });

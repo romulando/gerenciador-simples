@@ -1,4 +1,5 @@
 import { NextResponse, after } from 'next/server';
+import { autoVincularContaDetectada } from '@/lib/autoVinculo';
 import { getDb } from '@/lib/db';
 import {
   dadosOverlay,
@@ -18,6 +19,11 @@ import { createSupabaseServer } from '@/lib/supabase/server';
 // Consumido pela página admin (com sessão).
 export async function GET() {
   const db = getDb();
+
+  // Vincula a conta detectada ao único pedido solo ativo (quando houver) antes
+  // de montar a overlay. O throttle interno evita consultar o Supabase a cada
+  // polling de 3 s.
+  await autoVincularContaDetectada(db).catch(() => {});
 
   // Com o painel aberto, as partidas enfileiradas pelo GSI são gravadas no
   // pedido em segundo plano, usando a sessão do usuário (RLS do Theone).

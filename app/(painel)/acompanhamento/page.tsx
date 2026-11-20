@@ -8,6 +8,7 @@ import {
   resumoPartidas,
 } from '@/lib/acompanhamentoPartidas';
 import { getEstadoGsi } from '@/lib/gsi';
+import { autoVincularContaDetectada } from '@/lib/autoVinculo';
 import { listarContasPedidos } from '@/lib/pedidoContas';
 import {
   getPedidoSelecionado,
@@ -38,6 +39,9 @@ export default async function AcompanhamentoPage() {
 
   const db = getDb();
   const gsi = getEstadoGsi();
+  // Com um único pedido solo ativo, vincula a conta detectada sem exigir o
+  // clique em "Adicionar ID". A chamada é idempotente e não derruba a página.
+  await autoVincularContaDetectada(db, pedidos).catch(() => {});
   const contas = listarContasPedidos(db);
   const contasPorTracking = new Map(
     contas.map((conta) => [conta.trackingId, conta.accountId])

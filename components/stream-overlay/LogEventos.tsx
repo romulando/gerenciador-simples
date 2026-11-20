@@ -1,6 +1,14 @@
 'use client';
 
-import { Clapperboard, Gamepad2, Link2, RadioTower, ScrollText, UserRoundCheck } from 'lucide-react';
+import {
+  Clapperboard,
+  Gamepad2,
+  Link2,
+  RadioTower,
+  ScrollText,
+  TriangleAlert,
+  UserRoundCheck,
+} from 'lucide-react';
 import type { EventoOverlay } from './common';
 
 function formatarHoraEvento(valor: string): string {
@@ -18,6 +26,13 @@ const ESTILO_POR_TIPO: Record<
     cor: 'text-sky-300',
     fundo: 'bg-sky-500/10',
     borda: 'border-sky-500/30',
+  },
+  gsi_erro_partida: {
+    Icone: TriangleAlert,
+    rotulo: 'GSI',
+    cor: 'text-red-300',
+    fundo: 'bg-red-500/10',
+    borda: 'border-red-500/30',
   },
   conta_detectada: {
     Icone: UserRoundCheck,

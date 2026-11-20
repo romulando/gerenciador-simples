@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Gamepad2,
   Link2,
+  Pencil,
   RefreshCw,
   TriangleAlert,
   UserRound,
@@ -13,8 +14,9 @@ import {
   WifiOff,
 } from 'lucide-react';
 import Alerta from '@/components/ui/Alerta';
+import AdicionarIdContaModal from '@/components/pedidos/AdicionarIdContaModal';
 import { buscarJson, btnSecondary } from '@/components/pedidos/common';
-import { TIPOS_SERVICO, ehServicoDuo } from '@/lib/helpers';
+import { TIPOS_SERVICO, ehServicoDuo, ehServicoSolo } from '@/lib/helpers';
 
 export interface PedidoStatusAcomp {
   id: string;
@@ -50,6 +52,7 @@ export interface GsiStatusAcomp {
     resultado: string;
     hero: string;
   } | null;
+  ultimoErroPartida: string;
 }
 
 export interface PendentesStatus {
@@ -65,6 +68,11 @@ export interface StatusAcompResposta {
   pedidoSelecionadoTipo: string;
   contas: ContaStatusAcomp[];
   pendentes: PendentesStatus;
+  autoVinculo?: {
+    vinculado: boolean;
+    trackingId: string;
+    motivo: string;
+  } | null;
 }
 
 function rotuloGameState(valor: string): string {
@@ -95,6 +103,15 @@ function formatarDuracao(segundos: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+function formatarContatoGsi(ms: number | null): string {
+  if (!ms) return 'nunca';
+  const segundos = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (segundos < 60) return `há ${segundos}s`;
+  const minutos = Math.floor(segundos / 60);
+  if (minutos < 60) return `há ${minutos}min`;
+  return `há ${Math.floor(minutos / 60)}h`;
+}
+
 function Campo({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (
     <div>
@@ -115,6 +132,11 @@ export default function StatusGsi({
   const [sincronizando, setSincronizando] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
+  const [contaEditando, setContaEditando] = useState<{
+    trackingId: string;
+    tipoServico?: string;
+    contaAtual?: string | null;
+  } | null>(null);
   const sincronizandoRef = useRef(false);
   const router = useRouter();
 
@@ -122,10 +144,13 @@ export default function StatusGsi({
     try {
       const data = await buscarJson<StatusAcompResposta>('/api/acompanhamento/status');
       setStatus(data);
+      // O vínculo automático altera os dados renderizados no servidor
+      // (aviso "pedido sem ID", cartões de pedido). Atualiza a página uma vez.
+      if (data.autoVinculo?.vinculado) router.refresh();
     } catch {
       // O polling é silencioso; o erro do botão manual aparece no alerta.
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     const t = setInterval(() => void carregar(), 3000);
@@ -193,6 +218,17 @@ export default function StatusGsi({
     (item) => item.pedido?.estado === 'em_andamento'
   );
 
+  const contasPorTracking = new Map(
+    status.contas.map((c) => [c.trackingId.toUpperCase(), c.accountId])
+  );
+  const soloComOutraConta = pedidos
+    .filter((p) => p.estado === 'em_andamento' && ehServicoSolo(p.tipo_servico))
+    .map((p) => ({
+      pedido: p,
+      conta: contasPorTracking.get(String(p.tracking_id ?? '').toUpperCase()) ?? '',
+    }))
+    .filter((item) => item.conta && item.conta !== contaDetectada);
+
   const selecionado = pedidos.find(
     (p) => String(p.tracking_id ?? '').toUpperCase() === status.pedidoSelecionado
   );
@@ -236,10 +272,23 @@ export default function StatusGsi({
         </div>
 
         {!gsi.online ? (
-          <p className="flex items-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/[0.02] px-3 py-3 text-sm text-gray-400">
-            <WifiOff className="h-4 w-4 shrink-0 text-gray-500" />
-            Abra o Dota 2 com o GSI instalado para detectar a conta logada e as partidas.
-          </p>
+          <div className="flex items-start gap-2 rounded-xl border border-dashed border-white/15 bg-white/[0.02] px-3 py-3 text-sm text-gray-400">
+            <WifiOff className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+            <div className="space-y-1">
+              <p>Abra o Dota 2 com o GSI instalado para detectar a conta logada e as partidas.</p>
+              <p className="text-xs text-gray-500">
+                {gsi.ultimoContatoEm
+                  ? `Último contato com o Dota: ${formatarContatoGsi(gsi.ultimoContatoEm)}.`
+                  : 'Nenhum dado do Dota recebido desde que o painel abriu.'}{' '}
+                <a
+                  href="#gsi-config"
+                  className="text-[#e8a020] underline underline-offset-2 hover:text-amber-200"
+                >
+                  Ver diagnóstico do GSI
+                </a>
+              </p>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <Campo rotulo="Estado" valor={rotuloGameState(gsi.gameState)} />
@@ -251,6 +300,12 @@ export default function StatusGsi({
               valor={`${gsi.kills}/${gsi.deaths}/${gsi.assists}`}
             />
             <Campo rotulo="Relógio" valor={formatarDuracao(gsi.duracao)} />
+          </div>
+        )}
+
+        {gsi.ultimoErroPartida && (
+          <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            {gsi.ultimoErroPartida}
           </div>
         )}
 
@@ -267,19 +322,69 @@ export default function StatusGsi({
                 ativosDaConta[0].pedido?.tipo_servico ??
                 '—'}
             </span>
+            <button
+              type="button"
+              onClick={() =>
+                setContaEditando({
+                  trackingId: ativosDaConta[0].vinculo.trackingId,
+                  tipoServico: ativosDaConta[0].pedido?.tipo_servico,
+                  contaAtual: ativosDaConta[0].vinculo.accountId,
+                })
+              }
+              className="ml-auto inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+              title="Editar ou remover o vínculo da conta"
+            >
+              <Pencil className="h-3 w-3" />
+              Editar vínculo
+            </button>
           </div>
         )}
 
-        {gsi.online && contaDetectada && pedidosDaConta.length === 0 && (
-          <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#e8a020]" />
-            <p>
-              A conta <span className="font-mono">{contaDetectada}</span> não está vinculada a
-              nenhum pedido. Use <span className="font-semibold">Adicionar ID</span> em um pedido
-              solo para o vínculo automático.
-            </p>
-          </div>
-        )}
+        {gsi.online &&
+          contaDetectada &&
+          pedidosDaConta.length === 0 &&
+          soloComOutraConta.length !== 1 && (
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#e8a020]" />
+              <p>
+                A conta <span className="font-mono">{contaDetectada}</span> não está vinculada a
+                nenhum pedido. Use <span className="font-semibold">Adicionar ID</span> em um pedido
+                solo para o vínculo automático.
+              </p>
+            </div>
+          )}
+
+        {gsi.online &&
+          contaDetectada &&
+          pedidosDaConta.length === 0 &&
+          soloComOutraConta.length === 1 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              <TriangleAlert className="h-4 w-4 shrink-0 text-[#e8a020]" />
+              <p className="min-w-0 flex-1">
+                A conta logada <span className="font-mono">{contaDetectada}</span> é diferente da
+                conta vinculada ao pedido{' '}
+                <span className="font-mono">
+                  {soloComOutraConta[0].pedido.tracking_id}
+                </span>{' '}
+                (<span className="font-mono">{soloComOutraConta[0].conta}</span>). Se você trocou
+                de conta, atualize o vínculo.
+              </p>
+              <button
+                type="button"
+                onClick={() =>
+                  setContaEditando({
+                    trackingId: soloComOutraConta[0].pedido.tracking_id,
+                    tipoServico: soloComOutraConta[0].pedido.tipo_servico,
+                    contaAtual: soloComOutraConta[0].conta,
+                  })
+                }
+                className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-gray-200 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <Pencil className="h-3 w-3" />
+                Editar vínculo
+              </button>
+            </div>
+          )}
 
         {gsi.online && contaDetectada && ativosDaConta.length > 1 && (
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
@@ -391,6 +496,21 @@ export default function StatusGsi({
             {sucesso}
           </span>
         </Alerta>
+      )}
+
+      {contaEditando && (
+        <AdicionarIdContaModal
+          trackingId={contaEditando.trackingId}
+          tipoServico={contaEditando.tipoServico}
+          contaAtual={contaEditando.contaAtual}
+          contaSugerida={gsi.accountId}
+          onFechar={() => setContaEditando(null)}
+          onSalvo={async () => {
+            setContaEditando(null);
+            await carregar();
+            router.refresh();
+          }}
+        />
       )}
     </section>
   );

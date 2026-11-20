@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 
 export type EventoOverlayTipo =
   | 'gsi_conectado'
+  | 'gsi_erro_partida'
   | 'conta_detectada'
   | 'jogo_salvo'
   | 'vinculo_auto'
