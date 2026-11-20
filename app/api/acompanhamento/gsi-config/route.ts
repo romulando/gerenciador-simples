@@ -13,10 +13,12 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   const token = getGsiToken(db);
 
-  // Dota 2 só posta em HTTP no localhost; usamos a mesma porta do painel.
+  // Dota 2 só posta em HTTP no próprio PC; usamos a mesma porta do painel.
+  // 127.0.0.1 evita o caso em que "localhost" resolve para IPv6 (::1) e o
+  // servidor do Next está ouvindo só em IPv4.
   const host = req.headers.get('host') ?? 'localhost:4000';
   const porta = host.includes(':') ? host.split(':').pop() : '4000';
-  const uri = `http://localhost:${porta}/api/gsi`;
+  const uri = `http://127.0.0.1:${porta}/api/gsi`;
 
   const localizacao = localizarDota();
 

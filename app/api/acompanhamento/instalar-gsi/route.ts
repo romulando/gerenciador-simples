@@ -8,11 +8,13 @@ import {
   instalarGsi,
 } from '@/lib/dotaGsi';
 
-// Dota 2 só posta em HTTP no localhost; usamos a mesma porta do painel.
+// Dota 2 só posta em HTTP no próprio PC; usamos a mesma porta do painel.
+// 127.0.0.1 evita o caso em que "localhost" resolve para IPv6 (::1) e o
+// servidor do Next está ouvindo só em IPv4.
 function uriGsi(req: NextRequest): string {
   const host = req.headers.get('host') ?? 'localhost:4000';
   const porta = host.includes(':') ? host.split(':').pop() : '4000';
-  return `http://localhost:${porta}/api/gsi`;
+  return `http://127.0.0.1:${porta}/api/gsi`;
 }
 
 // POST /api/acompanhamento/instalar-gsi -> instala o .cfg na pasta do Dota 2 detectada

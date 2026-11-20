@@ -77,6 +77,32 @@ export function getDb(): DatabaseSync {
     CREATE INDEX IF NOT EXISTS idx_registros_pendentes_status
       ON registros_pendentes(status, recalculoOk);
 
+    -- Snapshot da partida em andamento. O GSI só salvava a partida no payload
+    -- final; se o servidor reiniciasse no meio do jogo (ou o payload final
+    -- viesse incompleto), a partida era perdida. Aqui guardamos o estado
+    -- mínimo para finalizar depois, inclusive manualmente.
+    CREATE TABLE IF NOT EXISTS gsi_andamento (
+      matchId TEXT PRIMARY KEY,
+      accountId TEXT NOT NULL DEFAULT '',
+      steamId TEXT NOT NULL DEFAULT '',
+      hero TEXT NOT NULL DEFAULT '',
+      kills INTEGER NOT NULL DEFAULT 0,
+      deaths INTEGER NOT NULL DEFAULT 0,
+      assists INTEGER NOT NULL DEFAULT 0,
+      duracao INTEGER NOT NULL DEFAULT 0,
+      radiantScore INTEGER NOT NULL DEFAULT 0,
+      direScore INTEGER NOT NULL DEFAULT 0,
+      teamName TEXT NOT NULL DEFAULT '',
+      winTeam TEXT NOT NULL DEFAULT '',
+      gameState TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'em_andamento',
+      iniciadaEm TEXT,
+      finalizadaEm TEXT,
+      atualizadoEm TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_gsi_andamento_status
+      ON gsi_andamento(status, atualizadoEm);
+
     CREATE TABLE IF NOT EXISTS overlay_eventos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tipo TEXT NOT NULL DEFAULT '',

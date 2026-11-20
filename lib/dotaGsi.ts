@@ -53,6 +53,9 @@ export interface VerificacaoGsi {
   status: StatusGsiInstalado;
   arquivoDoApp: boolean;
   uriInstalada: string | null;
+  portaInstalada: string | null;
+  portaEsperada: string | null;
+  hostInstalado: string | null;
   // Outros arquivos .cfg na mesma pasta (outros overlays/gerenciadores).
   outrosArquivos: string[];
 }
@@ -226,6 +229,18 @@ function uriCompativel(instalada: string | null, esperada: string): boolean {
   }
 }
 
+// Porta/host da uri instalada, para o card apontar exatamente o que está
+// diferente (porta errada é uma causa comum de "GSI aguardando").
+function infoUriGsi(uri: string | null): { porta: string | null; host: string | null } {
+  if (!uri) return { porta: null, host: null };
+  try {
+    const parsed = new URL(uri);
+    return { porta: parsed.port || null, host: parsed.hostname || null };
+  } catch {
+    return { porta: null, host: null };
+  }
+}
+
 // Ignora espaços/quebras de linha: o que importa são os valores do .cfg
 // (uri, token, buffer, throttle, heartbeat e blocos de dados).
 function normalizarConteudoGsi(conteudo: string): string {
@@ -242,12 +257,16 @@ export function verificarGsiInstalado(
   tokenEsperado: string
 ): VerificacaoGsi {
   const outrosArquivos = listarOutrosCfg(localizacao.gsiDir);
+  const esperada = infoUriGsi(uriEsperada);
 
   if (!localizacao.arquivoPath || !existe(localizacao.arquivoPath)) {
     return {
       status: 'ausente',
       arquivoDoApp: false,
       uriInstalada: null,
+      portaInstalada: null,
+      portaEsperada: esperada.porta,
+      hostInstalado: null,
       outrosArquivos,
     };
   }
@@ -260,11 +279,15 @@ export function verificarGsiInstalado(
       status: 'ilegivel',
       arquivoDoApp: false,
       uriInstalada: null,
+      portaInstalada: null,
+      portaEsperada: esperada.porta,
+      hostInstalado: null,
       outrosArquivos,
     };
   }
 
   const uriInstalada = extrairValorGsi(conteudo, 'uri');
+  const instalada = infoUriGsi(uriInstalada);
   const tokenInstalado = extrairValorGsi(conteudo, 'token');
   const doApp =
     tokenInstalado === tokenEsperado && uriCompativel(uriInstalada, uriEsperada);
@@ -274,12 +297,15 @@ export function verificarGsiInstalado(
       status: 'outro_app',
       arquivoDoApp: false,
       uriInstalada,
+      portaInstalada: instalada.porta,
+      portaEsperada: esperada.porta,
+      hostInstalado: instalada.host,
       outrosArquivos,
     };
   }
 
   // O arquivo é deste painel, mas pode ter sido gerado por uma versão antiga
-  // (ex.: throttle 0.5). Nesse caso o card precisa reaparecer para atualizar.
+  // (ex.: throttle 0.5 ou localhost). Nesse caso o card precisa reaparecer.
   const esperado = montarConteudoGsi(uriEsperada, tokenEsperado);
   const atualizado =
     normalizarConteudoGsi(conteudo) === normalizarConteudoGsi(esperado);
@@ -288,6 +314,9 @@ export function verificarGsiInstalado(
     status: atualizado ? 'ok' : 'desatualizado',
     arquivoDoApp: true,
     uriInstalada,
+    portaInstalada: instalada.porta,
+    portaEsperada: esperada.porta,
+    hostInstalado: instalada.host,
     outrosArquivos,
   };
 }

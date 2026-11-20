@@ -62,8 +62,50 @@ export interface PendentesStatus {
   atualizadoEm: string | null;
 }
 
+export interface GsiDiagnosticoAcomp {
+  ultimoPayload: {
+    em: number;
+    gameState: string;
+    matchId: string | null;
+    accountId: string;
+    hero: string;
+    host: string;
+    bytes: number;
+    teste: boolean;
+  } | null;
+  ultimaRejeicao: {
+    em: number;
+    motivo: string;
+    host: string;
+    bytes: number;
+    tokenPrefixo: string;
+    tokenTamanho: number;
+  } | null;
+  aceitos: number;
+  rejeitados: number;
+  ultimoTesteEm: number | null;
+}
+
+export interface PartidaPendenteAcomp {
+  matchId: string;
+  accountId: string;
+  hero: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  duracao: number;
+  iniciadaEm: string | null;
+  finalizadaEm: string | null;
+  gameState: string;
+  status: 'post_game' | 'interrompida';
+  atualizadoEm: string;
+  resultadoSugerido: 'W' | 'L' | null;
+}
+
 export interface StatusAcompResposta {
   gsi: GsiStatusAcomp;
+  gsiDiagnostico?: GsiDiagnosticoAcomp | null;
+  partidasPendentes?: PartidaPendenteAcomp[];
   pedidoSelecionado: string;
   pedidoSelecionadoTipo: string;
   contas: ContaStatusAcomp[];
@@ -137,6 +179,7 @@ export default function StatusGsi({
     tipoServico?: string;
     contaAtual?: string | null;
   } | null>(null);
+  const [acaoPendente, setAcaoPendente] = useState('');
   const sincronizandoRef = useRef(false);
   const router = useRouter();
 
@@ -201,7 +244,50 @@ export default function StatusGsi({
     return () => clearInterval(t);
   }, [status.pendentes.pendentes, sincronizar]);
 
+  const resolverPendente = useCallback(
+    async (matchId: string, resultado?: 'W' | 'L') => {
+      setAcaoPendente(matchId);
+      setErro('');
+      setSucesso('');
+      try {
+        if (resultado) {
+          await buscarJson('/api/acompanhamento/partida-pendente', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matchId, resultado }),
+          });
+          setSucesso(
+            `Partida ${matchId} registrada como ${
+              resultado === 'W' ? 'vitória' : 'derrota'
+            }.`
+          );
+        } else {
+          await buscarJson(
+            `/api/acompanhamento/partida-pendente?matchId=${encodeURIComponent(matchId)}`,
+            { method: 'DELETE' }
+          );
+          setSucesso(`Partida ${matchId} descartada.`);
+        }
+        await carregar();
+        router.refresh();
+      } catch (e) {
+        setErro((e as Error).message);
+      } finally {
+        setAcaoPendente('');
+      }
+    },
+    [carregar, router]
+  );
+
   const gsi = status.gsi;
+  const diagnostico = status.gsiDiagnostico ?? null;
+  const partidasPendentes = status.partidasPendentes ?? [];
+  const rejeicaoRecente = Boolean(
+    diagnostico?.ultimaRejeicao &&
+      Date.now() - diagnostico.ultimaRejeicao.em < 10 * 60_000 &&
+      (!diagnostico.ultimoPayload ||
+        diagnostico.ultimaRejeicao.em > diagnostico.ultimoPayload.em)
+  );
   const contaDetectada = gsi.accountId ?? '';
   const vinculosDaConta = contaDetectada
     ? status.contas.filter((c) => c.accountId === contaDetectada)
@@ -307,6 +393,33 @@ export default function StatusGsi({
           <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
             {gsi.ultimoErroPartida}
           </div>
+        )}
+
+        {!gsi.online && rejeicaoRecente && diagnostico?.ultimaRejeicao && (
+          <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            O Dota está enviando dados para este painel, mas o token não confere.
+            {' '}Última tentativa {formatarContatoGsi(diagnostico.ultimaRejeicao.em)} · token
+            recebido{' '}
+            <span className="font-mono">
+              {diagnostico.ultimaRejeicao.tokenPrefixo || 'vazio'}…
+            </span>{' '}
+            ({diagnostico.ultimaRejeicao.tokenTamanho} chars). Reinstale o GSI pelo card
+            abaixo para este painel assumir o recebimento.
+          </div>
+        )}
+
+        {!gsi.online && diagnostico?.ultimoPayload && (
+          <p className="mt-2 text-[11px] text-gray-500">
+            Último payload: {formatarContatoGsi(diagnostico.ultimoPayload.em)} ·{' '}
+            {rotuloGameState(diagnostico.ultimoPayload.gameState)}
+            {diagnostico.ultimoPayload.host
+              ? ` · ${diagnostico.ultimoPayload.host}`
+              : ''}
+            {diagnostico.ultimoPayload.bytes > 0
+              ? ` · ${diagnostico.ultimoPayload.bytes} bytes`
+              : ''}
+            .
+          </p>
         )}
 
         {gsi.online && contaDetectada && ativosDaConta.length === 1 && (
@@ -451,6 +564,72 @@ export default function StatusGsi({
           </p>
         )}
       </div>
+
+      {partidasPendentes.length > 0 && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <p className="flex items-center gap-2 text-sm font-semibold text-amber-200">
+            <TriangleAlert className="h-4 w-4 shrink-0 text-[#e8a020]" />
+            Partidas aguardando resultado ({partidasPendentes.length})
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-amber-200/80">
+            O GSI viu o fim da partida, mas não identificou vitória/derrota. Complete
+            abaixo para registrar no pedido; o herói e o K/D/A já foram guardados.
+          </p>
+          <div className="mt-2 space-y-2">
+            {partidasPendentes.map((p) => (
+              <div
+                key={p.matchId}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-gray-300"
+              >
+                <span className="font-mono text-gray-200">{p.matchId}</span>
+                <span>{p.hero || 'herói —'}</span>
+                <span className="tabular-nums">
+                  {p.kills}/{p.deaths}/{p.assists}
+                </span>
+                <span>{p.duracao ? formatarDuracao(p.duracao) : '—'}</span>
+                <span className="text-gray-500">
+                  {p.status === 'interrompida' ? 'sem contato no fim' : 'pós-jogo'}
+                  {p.finalizadaEm ? ` · ${p.finalizadaEm}` : ''}
+                </span>
+                <span className="ml-auto flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    className={`${btnSecondary} px-3 py-1.5 text-xs ${
+                      p.resultadoSugerido === 'W'
+                        ? 'border-green-500/50 text-green-200'
+                        : ''
+                    }`}
+                    disabled={acaoPendente === p.matchId}
+                    onClick={() => void resolverPendente(p.matchId, 'W')}
+                  >
+                    Vitória
+                  </button>
+                  <button
+                    type="button"
+                    className={`${btnSecondary} px-3 py-1.5 text-xs ${
+                      p.resultadoSugerido === 'L'
+                        ? 'border-red-500/50 text-red-200'
+                        : ''
+                    }`}
+                    disabled={acaoPendente === p.matchId}
+                    onClick={() => void resolverPendente(p.matchId, 'L')}
+                  >
+                    Derrota
+                  </button>
+                  <button
+                    type="button"
+                    className={`${btnSecondary} px-3 py-1.5 text-xs text-gray-400`}
+                    disabled={acaoPendente === p.matchId}
+                    onClick={() => void resolverPendente(p.matchId)}
+                  >
+                    Descartar
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {status.pendentes.pendentes > 0 && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">

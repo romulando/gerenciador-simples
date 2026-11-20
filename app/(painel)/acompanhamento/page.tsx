@@ -7,7 +7,11 @@ import {
   listarPartidas,
   resumoPartidas,
 } from '@/lib/acompanhamentoPartidas';
-import { getEstadoGsi } from '@/lib/gsi';
+import {
+  getDiagnosticoGsi,
+  getEstadoGsi,
+  listarPartidasPendentes,
+} from '@/lib/gsi';
 import { autoVincularContaDetectada } from '@/lib/autoVinculo';
 import { listarContasPedidos } from '@/lib/pedidoContas';
 import {
@@ -56,6 +60,8 @@ export default async function AcompanhamentoPage() {
 
   const statusInicial = {
     gsi,
+    gsiDiagnostico: getDiagnosticoGsi(),
+    partidasPendentes: listarPartidasPendentes(db),
     pedidoSelecionado: getPedidoSelecionado(db),
     pedidoSelecionadoTipo: getPedidoSelecionadoTipo(db),
     contas,

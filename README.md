@@ -169,6 +169,37 @@ Em `/stream-overlay`:
 > pelo Simples. Com o painel/aba de Acompanhamento aberto, as partidas são
 > registradas automaticamente no pedido (fila local + sincronização autenticada).
 
+### GSI não conecta (Acompanhamento em “aguardando”)
+
+O card **GSI do Dota 2** mostra o diagnóstico: caminho do arquivo, URI esperada,
+status do token, último payload recebido e última rejeição. Confira, nesta ordem:
+
+1. **Mesmo PC**: o painel e o Dota 2 precisam rodar no mesmo computador.
+2. **Porta**: abra o painel por `http://127.0.0.1:4000` (ou `localhost:4000`). O
+   `.cfg` gerado usa `127.0.0.1` na mesma porta do painel. Se o arquivo instalado
+   apontar para outra porta, clique em **Substituir/Reinstalar GSI**.
+3. **Token**: se aparecer “Token: Não confere”, o arquivo é de outra instalação
+   (outro painel, cópia de outro PC ou banco recriado). Reinstale pelo painel.
+4. **Outro `.cfg`**: o `gerenciador-pedidos` usa o mesmo nome de arquivo. Se ele
+   instalou por último, o Simples não recebe nada; reinstale por aqui.
+5. **Dota reiniciado**: o Dota só lê a pasta `gamestate_integration` ao iniciar.
+   Feche o jogo por completo e abra de novo.
+6. **Firewall/antivírus**: libere o `node.exe` e a porta 4000, se necessário.
+7. **Teste**: use **Testar recebimento** e abra a URI esperada no navegador; deve
+   responder `ok: true`.
+
+Quando o Dota envia dados mas o token não confere, o diagnóstico registra a
+rejeição (prefixo/tamanho do token recebido, horário e host) em vez de deixar o
+painel eternamente em “aguardando”.
+
+### Partidas aguardando resultado
+
+O GSI guarda um snapshot da partida desde o pré-jogo. Se o servidor reiniciar no
+meio do jogo, ou o payload final vier sem vencedor/time/placar, a partida não é
+descartada: ela aparece em **Partidas aguardando resultado** na aba
+Acompanhamento, com herói e K/D/A, para você registrar vitória/derrota ou
+descartar. A partida continua sobrevivendo a reinícios do servidor.
+
 ## 7. Teste da API de recálculo
 
 Com o site rodando:

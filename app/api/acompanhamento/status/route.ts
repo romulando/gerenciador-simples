@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { autoVincularContaDetectada } from '@/lib/autoVinculo';
 import { getDb } from '@/lib/db';
-import { getEstadoGsi } from '@/lib/gsi';
+import {
+  getDiagnosticoGsi,
+  getEstadoGsi,
+  listarPartidasPendentes,
+} from '@/lib/gsi';
 import { listarContasPedidos } from '@/lib/pedidoContas';
 import {
   getPedidoSelecionado,
@@ -22,6 +26,8 @@ export async function GET() {
   return NextResponse.json(
     {
       gsi: getEstadoGsi(),
+      gsiDiagnostico: getDiagnosticoGsi(),
+      partidasPendentes: listarPartidasPendentes(db),
       pedidoSelecionado: getPedidoSelecionado(db),
       pedidoSelecionadoTipo: getPedidoSelecionadoTipo(db),
       contas: listarContasPedidos(db),
