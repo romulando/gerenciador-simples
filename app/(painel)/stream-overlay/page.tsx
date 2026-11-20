@@ -97,20 +97,28 @@ export default function StreamOverlayPage() {
     setSelecionado(trackingId);
   }, []);
 
-  const carregar = useCallback(async () => {
-    const [data, lista] = await Promise.all([
-      buscarJson<RespostaPainelOverlay>('/api/overlay/painel'),
-      buscarJson<{ pedidos: PedidoTheone[] }>('/api/orders'),
-    ]);
+  const carregarPainel = useCallback(async (): Promise<RespostaPainelOverlay> => {
+    const data = await buscarJson<RespostaPainelOverlay>('/api/overlay/painel');
     setPainel(data);
-    setPedidos(lista.pedidos ?? []);
     setContas(data.contas ?? []);
+    setSelecionado(data.pedidoSelecionado ?? '');
+    return data;
+  }, []);
+
+  const carregarPedidos = useCallback(async (): Promise<PedidoTheone[]> => {
+    const lista = await buscarJson<{ pedidos: PedidoTheone[] }>('/api/orders');
+    const novos = lista.pedidos ?? [];
+    setPedidos(novos);
+    return novos;
+  }, []);
+
+  const carregar = useCallback(async () => {
+    const [data, lista] = await Promise.all([carregarPainel(), carregarPedidos()]);
     const atual = data.pedidoSelecionado ?? '';
-    setSelecionado(atual);
 
     // Primeira carga sem seleção: se houver só um pedido em andamento, usa ele.
     if (!atual && !autoSelecionou.current) {
-      const ativos = (lista.pedidos ?? []).filter((p) => p.estado === 'em_andamento');
+      const ativos = lista.filter((p) => p.estado === 'em_andamento');
       if (ativos.length === 1) {
         autoSelecionou.current = true;
         await selecionar(ativos[0].tracking_id, ativos[0].tipo_servico);
@@ -119,12 +127,12 @@ export default function StreamOverlayPage() {
 
     // Seleção antiga sem o tipo salvo: reenvia o tipo para o vínculo duo/grupo.
     if (atual && !data.pedidoSelecionadoTipo) {
-      const escolhido = (lista.pedidos ?? []).find((p) => p.tracking_id === atual);
+      const escolhido = lista.find((p) => p.tracking_id === atual);
       if (escolhido?.tipo_servico) {
         await selecionar(atual, escolhido.tipo_servico);
       }
     }
-  }, [selecionar]);
+  }, [carregarPainel, carregarPedidos, selecionar]);
 
   useEffect(() => {
     let ativo = true;
@@ -135,14 +143,20 @@ export default function StreamOverlayPage() {
         if (ativo) setErro((e as Error).message);
       }
     })();
-    const t = setInterval(() => {
-      carregar().catch(() => {});
+    // O painel continua atualizando a cada 3 s (leituras locais + cache).
+    const tPainel = setInterval(() => {
+      carregarPainel().catch(() => {});
     }, 3000);
+    // A lista de pedidos muda raramente: uma leitura por minuto basta.
+    const tPedidos = setInterval(() => {
+      carregarPedidos().catch(() => {});
+    }, 60_000);
     return () => {
       ativo = false;
-      clearInterval(t);
+      clearInterval(tPainel);
+      clearInterval(tPedidos);
     };
-  }, [carregar]);
+  }, [carregar, carregarPainel, carregarPedidos]);
 
   useEffect(() => {
     const el = previewRef.current;
@@ -191,7 +205,7 @@ export default function StreamOverlayPage() {
       body: JSON.stringify(cfg),
     });
     setConfigAberto(false);
-    await carregar();
+    await carregarPainel();
   }
 
   const dados = painel?.dados ?? null;
@@ -509,7 +523,7 @@ export default function StreamOverlayPage() {
           onFechar={() => setContaEditando(false)}
           onSalvo={async () => {
             setContaEditando(false);
-            await carregar();
+            await carregarPainel();
           }}
         />
       )}

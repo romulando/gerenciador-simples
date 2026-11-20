@@ -1,6 +1,17 @@
 import { createSupabaseServer } from './supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  CACHE_PEDIDOS,
+  CACHE_PEDIDO_PUBLICO,
+  comCache,
+  invalidarCache,
+} from './cache';
 import type { LogTheone, PedidoTheone, RegistroTheone } from './types';
+
+// A lista de pedidos é lida por Dashboard, Pedidos, Acompanhamento e pelo
+// painel da overlay. Com o cache, essas telas compartilham uma única leitura
+// enquanto o TTL não vence; escritas invalidam na hora.
+const TTL_LISTA_PEDIDOS_MS = 30_000;
 
 // Cliente Supabase injetável: o fluxo normal usa a sessão do usuário
 // (createSupabaseServer); o processamento em segundo plano pode reaproveitar
@@ -11,14 +22,30 @@ async function clientePadrao(cliente?: ClienteSupabase): Promise<ClienteSupabase
   return cliente ?? (await createSupabaseServer());
 }
 
-export async function listarPedidos(cliente?: ClienteSupabase): Promise<PedidoTheone[]> {
-  const supabase = await clientePadrao(cliente);
-  const { data, error } = await supabase
+// Escritas em pedidos/registros/tracking mudam a lista e o resumo público da
+// overlay. Invalida os dois caches para a próxima leitura buscar no Supabase.
+function invalidarLeituras(): void {
+  invalidarCache(CACHE_PEDIDOS);
+  invalidarCache(CACHE_PEDIDO_PUBLICO);
+}
+
+async function consultarPedidos(cliente: ClienteSupabase): Promise<PedidoTheone[]> {
+  const { data, error } = await cliente
     .from('orders_theone')
     .select('*')
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as PedidoTheone[];
+}
+
+export async function listarPedidos(cliente?: ClienteSupabase): Promise<PedidoTheone[]> {
+  // Cliente injetado (jobs em segundo plano) não usa o cache global.
+  if (cliente) return consultarPedidos(cliente);
+
+  return comCache(CACHE_PEDIDOS, TTL_LISTA_PEDIDOS_MS, async () => {
+    const supabase = await createSupabaseServer();
+    return consultarPedidos(supabase);
+  });
 }
 
 export async function obterPedido(
@@ -95,6 +122,7 @@ export async function atualizarPedido(
     .update({ ...patch, atualizado_em: new Date().toISOString() })
     .eq('id', id);
   if (error) throw new Error(error.message);
+  invalidarLeituras();
 }
 
 export async function inserirRegistro(
@@ -108,6 +136,7 @@ export async function inserirRegistro(
     .select('*')
     .single();
   if (error) throw new Error(error.message);
+  invalidarLeituras();
   return data as RegistroTheone;
 }
 
@@ -124,6 +153,7 @@ export async function atualizarRegistro(
     .select('*')
     .single();
   if (error) throw new Error(error.message);
+  invalidarLeituras();
   return data as RegistroTheone;
 }
 
@@ -131,6 +161,7 @@ export async function excluirRegistro(id: string, cliente?: ClienteSupabase): Pr
   const supabase = await clientePadrao(cliente);
   const { error } = await supabase.from('records_theone').delete().eq('id', id);
   if (error) throw new Error(error.message);
+  invalidarLeituras();
 }
 
 // Registro já espelhado no Supabase para um `origem_id` (idempotência do GSI).
@@ -180,4 +211,5 @@ export async function salvarTracking(
     .from('web_tracking_theone')
     .upsert(tracking, { onConflict: 'tracking_id' });
   if (error) throw new Error(error.message);
+  invalidarLeituras();
 }
