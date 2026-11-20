@@ -127,12 +127,22 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
               </div>
             </div>
 
-            {pedido.observacoes && (
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
-                <p className="text-xs text-gray-500">Observações</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-gray-200">{pedido.observacoes}</p>
-              </div>
-            )}
+            <div className="mt-4">
+              <label
+                htmlFor="pedido-observacoes"
+                className="mb-1 block text-xs text-gray-500"
+              >
+                Observações do pedido
+              </label>
+              <textarea
+                id="pedido-observacoes"
+                readOnly
+                rows={3}
+                value={pedido.observacoes ?? ''}
+                placeholder="Sem observações"
+                className="w-full resize-none rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-gray-200 placeholder-gray-600 outline-none"
+              />
+            </div>
           </div>
 
           <AcoesPedido pedido={pedido} />

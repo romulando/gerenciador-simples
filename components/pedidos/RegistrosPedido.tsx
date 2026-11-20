@@ -4,8 +4,11 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { MEDALHAS, formatarData, isBoost, rotuloQuantidade } from '@/lib/helpers';
+import { nomeHeroi } from '@/lib/heroes';
 import { enviarJson } from './common';
 import Alerta from '@/components/ui/Alerta';
+import HeroImg from '@/components/ui/HeroImg';
+import HeroSelect from '@/components/ui/HeroSelect';
 import type { PedidoTheone, RegistroTheone, RespostaRecalculo } from '@/lib/types';
 
 function agoraInput(): string {
@@ -440,10 +443,9 @@ export default function RegistrosPedido({
 
           <div>
             <label className="mb-1 block text-xs text-gray-400">Herói</label>
-            <input
+            <HeroSelect
               value={hero}
               onChange={(e) => setHero(e.target.value)}
-              placeholder="ex.: axe"
               className="h-10 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white placeholder-gray-500 outline-none focus:border-white/30"
             />
           </div>
@@ -579,7 +581,16 @@ export default function RegistrosPedido({
                     </div>
                     <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
                       <span>{formatarData(r.data)}</span>
-                      {r.hero && <span>{r.hero}</span>}
+                      {r.hero && (
+                        <span className="inline-flex items-center gap-1">
+                          <HeroImg
+                            interno={r.hero}
+                            nome={nomeHeroi(r.hero)}
+                            className="h-4 w-7 shrink-0 rounded object-cover"
+                          />
+                          {nomeHeroi(r.hero)}
+                        </span>
+                      )}
                       {(r.kills != null || r.deaths != null || r.assists != null) && (
                         <span>
                           K/D/A {r.kills ?? 0}/{r.deaths ?? 0}/{r.assists ?? 0}
