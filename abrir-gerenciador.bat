@@ -222,6 +222,25 @@ goto :esperar
 echo.
 echo Servidor no ar! Abrindo %URL%
 start "" "%URL%"
+
+rem Se houve aviso na atualizacao, mantem esta janela aberta para dar tempo
+rem de ler. O servidor roda em outra janela (ja iniciada), entao a pausa
+rem aqui nao atrapalha nada.
+set "ALERTA="
+echo %STATUS_VERSAO%| findstr /i /c:"DESATUALIZADA" /c:"NAO VERIFICADA" /c:"restaurada" >nul 2>nul
+if not errorlevel 1 set "ALERTA=1"
+if not defined STATUS_AVISO goto :abrir_sem_aviso
+set "ALERTA=1"
+
+:abrir_sem_aviso
+if not defined ALERTA goto :fim
+echo.
+echo %STATUS_VERSAO%
+if defined STATUS_DETALHE echo %STATUS_DETALHE%
+echo.
+echo O servidor continua rodando na outra janela.
+echo Pressione uma tecla para fechar esta janela.
+pause >nul
 goto :fim
 
 :ja_rodando
@@ -731,6 +750,19 @@ set "GIT_TERMINAL_PROMPT=0"
 call :fazer_pull
 if not errorlevel 1 goto :atualizar_pull_ok
 
+rem Alteracoes locais em arquivo versionado (ex.: este proprio .bat, por
+rem diferenca de quebra de linha ou edicao manual): descarta so o .bat e
+rem tenta o pull de novo. O repositorio e a fonte da verdade do launcher.
+findstr /i /c:"Your local changes" "%LOG_GIT%" >nul 2>nul
+if errorlevel 1 goto :checar_nao_rastreados
+call :descartar_alteracoes_launcher
+if not defined DESCARTOU goto :atualizar_pull_falhou
+echo Alteracoes locais no abrir-gerenciador.bat descartadas. Tentando de novo...
+call :fazer_pull
+if not errorlevel 1 goto :atualizar_pull_ok
+goto :atualizar_pull_falhou
+
+:checar_nao_rastreados
 findstr /i /c:"untracked working tree files" /c:"would be overwritten" "%LOG_GIT%" >nul 2>nul
 if errorlevel 1 goto :atualizar_pull_falhou
 call :migrar_nao_rastreados
@@ -787,6 +819,20 @@ rem ---------------------------------------------------------------------------
 del /q "%LOG_GIT%" >nul 2>nul
 "%GIT%" -C "%CD%" -c credential.helper= -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 pull --ff-only --quiet "%REPO%" main > "%LOG_GIT%" 2>&1
 exit /b %errorlevel%
+
+rem ---------------------------------------------------------------------------
+rem descartar_alteracoes_launcher: se o Git reclamou de alteracoes locais no
+rem abrir-gerenciador.bat, volta o arquivo para a versao do repositorio.
+rem Nao mexe em nenhum outro arquivo (o .env.local, por exemplo, e preservado).
+rem Seguro porque esta execucao roda a partir da copia em TEMP.
+rem ---------------------------------------------------------------------------
+:descartar_alteracoes_launcher
+set "DESCARTOU="
+findstr /i /c:"abrir-gerenciador.bat" "%LOG_GIT%" >nul 2>nul
+if errorlevel 1 exit /b 0
+"%GIT%" -C "%CD%" checkout -- abrir-gerenciador.bat >nul 2>nul
+if not errorlevel 1 set "DESCARTOU=1"
+exit /b 0
 
 rem ---------------------------------------------------------------------------
 rem migrar_nao_rastreados: .env.local e este .bat passaram a ser versionados.
