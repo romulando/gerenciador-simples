@@ -59,7 +59,7 @@ set "URL=http://localhost:%PORTA%"
 rem Token fine-grained do GitHub (Contents: Read-only neste repositorio).
 rem Validade sugerida: 1 ano. Anote a data para renovar.
 rem Este token fica no repositorio privado para os clientes baixarem o codigo.
-set "GIT_TOKEN=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"
+set "GIT_TOKEN=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"
 if not defined GIT_TOKEN set "GIT_TOKEN=SEU_TOKEN_AQUI"
 
 set "REPO_PATH=github.com/romulando/gerenciador-simples.git"
