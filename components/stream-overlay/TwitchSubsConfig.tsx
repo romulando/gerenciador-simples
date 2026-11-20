@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Link2, PlugZap, Unplug } from 'lucide-react';
+import Link from 'next/link';
+import { BookOpen, Check, Link2, PlugZap, Unplug } from 'lucide-react';
 import { copiarTexto } from '@/lib/clipboard';
 import Alerta from '@/components/ui/Alerta';
 import { buscarJson, btnSecondary, enviarJson, inputCls, labelCls } from '@/components/pedidos/common';
@@ -105,10 +106,21 @@ export default function TwitchSubsConfig() {
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-gray-300">
-        <PlugZap className="h-3.5 w-3.5 text-[#e8a020]" />
-        Contador de subs — Twitch
-      </p>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-gray-300">
+          <PlugZap className="h-3.5 w-3.5 text-[#e8a020]" />
+          Contador de subs — Twitch
+        </p>
+        <Link
+          href="/stream-overlay/tutorial#twitch"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 rounded-full border border-[#e8a020]/30 bg-[#e8a020]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#e8a020] transition-colors hover:bg-[#e8a020]/20"
+        >
+          <BookOpen className="h-3 w-3" />
+          Tutorial
+        </Link>
+      </div>
 
       <div className="mb-3 flex items-center gap-2 text-xs">
         <span

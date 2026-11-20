@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Unplug, Wallet } from 'lucide-react';
+import Link from 'next/link';
+import { BookOpen, Unplug, Wallet } from 'lucide-react';
 import Alerta from '@/components/ui/Alerta';
 import { enviarJson, btnSecondary, inputCls, labelCls, buscarJson } from '@/components/pedidos/common';
 import type { LivepixStatusOverlay } from './common';
@@ -78,10 +79,21 @@ export default function LivePixConfig() {
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-gray-300">
-        <Wallet className="h-3.5 w-3.5 text-[#e8a020]" />
-        Barra do LivePix — API
-      </p>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-gray-300">
+          <Wallet className="h-3.5 w-3.5 text-[#e8a020]" />
+          Barra do LivePix — API
+        </p>
+        <Link
+          href="/stream-overlay/tutorial#livepix"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 rounded-full border border-[#e8a020]/30 bg-[#e8a020]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#e8a020] transition-colors hover:bg-[#e8a020]/20"
+        >
+          <BookOpen className="h-3 w-3" />
+          Tutorial
+        </Link>
+      </div>
 
       <div className="mb-3 flex items-center gap-2 text-xs">
         <span

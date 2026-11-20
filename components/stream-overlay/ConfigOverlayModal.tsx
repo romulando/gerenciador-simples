@@ -107,7 +107,7 @@ export default function ConfigOverlayModal({
   }
 
   return (
-    <Modal titulo="Configuração da Overlay" largura="max-w-lg" onClose={onFechar}>
+    <Modal titulo="Configuração da Overlay" largura="max-w-2xl" onClose={onFechar}>
       <form onSubmit={submeter} className="space-y-5">
         <div>
           <label className={labelCls} htmlFor="overlay-limite-wins">
@@ -140,11 +140,6 @@ export default function ConfigOverlayModal({
             badge={boost ? 'ativo' : 'inativo'}
             title="Mostra a linha com a medalha inicial → final e os MMRs na overlay"
           />
-          <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
-            Ligado: a overlay mostra a linha com a medalha inicial → final e os MMRs (ex.:{' '}
-            <span className="font-mono">3630 → 5130</span>) abaixo do W/L. Desligado: exibe apenas
-            a medalha atual, o MMR atual e o W/L.
-          </p>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -170,12 +165,6 @@ export default function ConfigOverlayModal({
               />
               <span className="text-sm text-gray-300">subs</span>
             </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
-              O número de subs e a cor do card vêm da Twitch e do Editar Overlay. Com a meta
-              definida, aparece a barra de progresso abaixo do contador. Os slides do carrossel
-              (cupom, patrocinadores e anuncie aqui) e os tempos de rotação também ficam no Editar
-              Overlay.
-            </p>
           </div>
         </div>
 
