@@ -56,6 +56,8 @@ interface GsiConfigResposta {
     arquivoPath: string | null;
     arquivoInstalado: boolean;
     caminhosTestados: string[];
+    pastasIgnoradas?: string[];
+    detectadoPor?: 'appmanifest' | 'executavel' | null;
   };
   verificacao?: GsiVerificacao;
 }
@@ -259,6 +261,16 @@ export default function GsiConfig() {
         config.localizacao.cfgDir ??
         'não encontrado'
       }`,
+      `Detecção: ${
+        config.localizacao.detectadoPor === 'appmanifest'
+          ? 'appmanifest do Steam (570)'
+          : config.localizacao.detectadoPor === 'executavel'
+            ? 'dota2.exe'
+            : 'não encontrada'
+      }`,
+      `Pastas ignoradas (sem jogo): ${
+        pastasIgnoradas.length ? pastasIgnoradas.join(', ') : 'nenhuma'
+      }`,
       `GSI online: ${gsiOnline ? 'sim' : 'não'}`,
       `Último contato: ${formatarContato(ultimoContatoEm)}`,
       `Token: ${rotuloToken(v)}`,
@@ -320,6 +332,7 @@ export default function GsiConfig() {
   const precisaAtualizar = verificacao?.status === 'desatualizado';
   const aguardando = !gsiOnline;
   const outrosArquivos = verificacao?.outrosArquivos ?? [];
+  const pastasIgnoradas = config?.localizacao.pastasIgnoradas ?? [];
   const portaDiferente = Boolean(
     verificacao?.portaInstalada &&
       verificacao.portaEsperada &&
@@ -370,6 +383,27 @@ export default function GsiConfig() {
 
       {erro && <Alerta tipo="erro" className="mt-3">{erro}</Alerta>}
       {aviso && <Alerta tipo="sucesso" className="mt-3">{aviso}</Alerta>}
+
+      {pastasIgnoradas.length > 0 && (
+        <Alerta tipo="aviso" className="mt-3">
+          <p>
+            {config?.localizacao.encontrado
+              ? 'O GSI usa a instalação do Dota 2 que realmente tem o jogo. Ignorei esta(s) pasta(s) antiga(s), que só têm restos de outra biblioteca do Steam:'
+              : 'Encontrei pasta(s) com restos do Dota 2, mas sem o jogo instalado. O GSI não será gravado nelas:'}
+          </p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 font-mono text-[11px] leading-relaxed break-all">
+            {pastasIgnoradas.map((pasta) => (
+              <li key={pasta}>{pasta}</li>
+            ))}
+          </ul>
+          {!config?.localizacao.encontrado && (
+            <p className="mt-1">
+              Localize a pasta do Dota que você abre (a que tem <code>dota2.exe</code>) e use
+              “Copiar .cfg”.
+            </p>
+          )}
+        </Alerta>
+      )}
 
       {verificacao?.status === 'outro_app' && (
         <Alerta tipo="aviso" className="mt-3">
@@ -467,6 +501,16 @@ export default function GsiConfig() {
             />
             <Info rotulo="Último contato" valor={formatarContato(ultimoContatoEm)} />
             <Info rotulo="Arquivo" valor={caminhoArquivo} />
+            <Info
+              rotulo="Detecção do Dota"
+              valor={
+                config.localizacao.detectadoPor === 'appmanifest'
+                  ? 'Confirmada pelo Steam (appmanifest 570)'
+                  : config.localizacao.detectadoPor === 'executavel'
+                    ? 'Confirmada pelo dota2.exe'
+                    : 'Instalação não localizada'
+              }
+            />
             <Info rotulo="URI esperada" valor={config.uri} />
             <Info rotulo="Token" valor={rotuloToken(verificacao)} />
             <Info

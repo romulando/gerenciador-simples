@@ -225,6 +225,24 @@ export function registrarPayloadInvalido(
   );
 }
 
+// Falhas ao processar um payload não podem sumir: a rota pública responde 200
+// para o Dota não ficar reenviando, mas o painel precisa mostrar o motivo.
+export function registrarFalhaProcessamentoGsi(erro: unknown): void {
+  const mensagem = erro instanceof Error ? erro.message : String(erro);
+  console.error('[GSI] Falha ao processar payload:', erro);
+  try {
+    const db = getDb();
+    const s = estadoInterno();
+    s.ultimoErroPartida = `Falha ao processar os dados do Dota 2: ${mensagem}`;
+    registrarEventoOverlay(db, 'gsi_erro_partida', s.ultimoErroPartida, {
+      origem: 'processarGsi',
+    });
+    persistirDiagnostico(db, s, true);
+  } catch {
+    // Se até o registro do erro falhar, o console acima ainda serve de pista.
+  }
+}
+
 const GSI_MENU = 'menu';
 const GSI_TESTANDO_HEROI = 'testando_heroi';
 const GSI_ONLINE_JANELA_MS = 40_000;
@@ -483,6 +501,10 @@ function salvarAndamentoGsi(
     return;
   }
 
+  // O jogo atual mudou: snapshots abertos de partidas anteriores não podem
+  // continuar "em andamento" para sempre.
+  if (mudouAlvo) interromperAndamentosGsi(db, matchId);
+
   db.prepare(
     `INSERT INTO gsi_andamento
        (matchId, accountId, steamId, hero, kills, deaths, assists, duracao,
@@ -538,9 +560,45 @@ function obterAndamentoGsi(db: DatabaseSync, matchId: string): AndamentoGsi | nu
   return row ? mapearAndamento(row) : null;
 }
 
+// Usado quando o payload final vem sem matchId (comum depois de reiniciar o
+// servidor no meio do jogo): o snapshot mais recente ainda aberto é a partida
+// que acabou de terminar.
+function obterAndamentoAbertoRecente(
+  db: DatabaseSync,
+  accountId = ''
+): AndamentoGsi | null {
+  const conta = String(accountId ?? '').replace(/\D/g, '');
+  const row = db
+    .prepare(
+      `SELECT * FROM gsi_andamento
+       WHERE status = 'em_andamento'
+         AND atualizadoEm >= datetime('now','localtime','-4 hours')
+         AND (? = '' OR accountId = '' OR accountId = ?)
+       ORDER BY atualizadoEm DESC, matchId DESC
+       LIMIT 1`
+    )
+    .get(conta, conta) as Record<string, unknown> | undefined;
+  return row ? mapearAndamento(row) : null;
+}
+
 function removerAndamentoGsi(db: DatabaseSync, matchId: string): boolean {
   const info = db.prepare('DELETE FROM gsi_andamento WHERE matchId = ?').run(matchId);
   return Number(info.changes) > 0;
+}
+
+// Um novo matchId (ou uma nova seleção de herói) significa que qualquer
+// snapshot "em_andamento" de outro jogo ficou para trás — normalmente porque o
+// Dota não enviou o POST_GAME. Marca como interrompida para a partida aparecer
+// em "Partidas aguardando resultado" sem esperar uma hora.
+function interromperAndamentosGsi(db: DatabaseSync, excetoMatchId = ''): void {
+  db.prepare(
+    `UPDATE gsi_andamento
+     SET status = 'interrompida',
+         finalizadaEm = COALESCE(finalizadaEm, atualizadoEm),
+         atualizadoEm = datetime('now','localtime')
+     WHERE status = 'em_andamento'
+       AND matchId <> ?`
+  ).run(excetoMatchId);
 }
 
 function resultadoSugeridoAndamento(andamento: AndamentoGsi): 'W' | 'L' | null {
@@ -943,6 +1001,9 @@ export function processarGsi(payload: PayloadGsi, meta: GsiRequestMeta = {}): vo
       s.winTeamMatchId = '';
       s.ultimoErroPartida = '';
       s.ultimoPostGameMatchId = '';
+      // Nova seleção de herói: nenhuma partida anterior pode continuar
+      // marcada como "em andamento" (o POST_GAME pode ter sido perdido).
+      interromperAndamentosGsi(db);
     } else if (gameState === 'DOTA_GAMERULES_STATE_PRE_GAME') {
       s.partidaContada = false;
       if (!s.iniciadaEm) s.iniciadaEm = new Date().toISOString();
@@ -959,8 +1020,14 @@ export function processarGsi(payload: PayloadGsi, meta: GsiRequestMeta = {}): vo
 
   // Snapshot persistido: permite finalizar a partida mesmo se o servidor
   // reiniciar no meio do jogo ou se o payload final vier incompleto.
-  const andamento =
-    matchIdValidoGsi(s.matchId) ? obterAndamentoGsi(db, String(s.matchId)) : null;
+  const andamentoRecente =
+    gameState === 'DOTA_GAMERULES_STATE_POST_GAME' && !matchIdValidoGsi(s.matchId)
+      ? obterAndamentoAbertoRecente(db, s.accountId)
+      : null;
+  const matchIdPartida = matchIdValidoGsi(s.matchId)
+    ? String(s.matchId)
+    : andamentoRecente?.matchId ?? '';
+  const andamento = matchIdPartida ? obterAndamentoGsi(db, matchIdPartida) : null;
   salvarAndamentoGsi(db, s, gameState, map);
 
   if (gameState === 'DOTA_GAMERULES_STATE_POST_GAME') {
@@ -970,7 +1037,7 @@ export function processarGsi(payload: PayloadGsi, meta: GsiRequestMeta = {}): vo
     const win = String(map.win_team ?? '').toLowerCase();
     const team = String(player.team_name ?? '').toLowerCase();
     const winGuardado =
-      (s.matchId && s.winTeamMatchId === s.matchId ? s.winTeam : '') ||
+      (matchIdPartida && s.winTeamMatchId === matchIdPartida ? s.winTeam : '') ||
       andamento?.winTeam ||
       '';
     const teamGuardado = team || s.teamName || andamento?.teamName || '';
@@ -987,24 +1054,24 @@ export function processarGsi(payload: PayloadGsi, meta: GsiRequestMeta = {}): vo
       placar
     );
 
-    if (matchIdValidoGsi(s.matchId) && !resultado && !s.partidaContada) {
-      if (s.ultimoPostGameMatchId !== String(s.matchId)) {
-        s.ultimoPostGameMatchId = String(s.matchId);
+    if (matchIdPartida && !resultado && !s.partidaContada) {
+      if (s.ultimoPostGameMatchId !== matchIdPartida) {
+        s.ultimoPostGameMatchId = matchIdPartida;
         s.ultimoErroPartida =
           'Fim de partida detectado, mas o Dota não enviou vencedor/time/placar. A partida ficou pendente para você completar o resultado.';
         registrarEventoOverlay(db, 'gsi_erro_partida', s.ultimoErroPartida, {
-          matchId: s.matchId,
+          matchId: matchIdPartida,
           mapKeys: Object.keys(map),
           playerKeys: Object.keys(player),
         });
       }
-    } else if (matchIdValidoGsi(s.matchId) && resultado && !s.partidaContada) {
+    } else if (matchIdPartida && resultado && !s.partidaContada) {
       s.ultimoErroPartida = '';
       const finalizadaEm = agoraLocal();
       const duracao =
         s.clock > 0 ? s.clock : s.ultimoClock || andamento?.duracao || 0;
       const registrada = registrarPartidaNoPedido(db, {
-        matchId: s.matchId,
+        matchId: matchIdPartida,
         accountId: s.accountId || andamento?.accountId || '',
         steamId: s.steamId || andamento?.steamId || '',
         hero: s.hero || andamento?.hero || '',
@@ -1038,14 +1105,14 @@ export function processarGsi(payload: PayloadGsi, meta: GsiRequestMeta = {}): vo
           }`,
           {
             partidaId: partida.id,
-            matchId: s.matchId,
+            matchId: matchIdPartida,
             resultado,
             hero: s.hero,
             trackingId: trackingId || null,
           }
         );
       }
-      removerAndamentoGsi(db, String(s.matchId));
+      removerAndamentoGsi(db, matchIdPartida);
     }
   }
 
@@ -1053,7 +1120,7 @@ export function processarGsi(payload: PayloadGsi, meta: GsiRequestMeta = {}): vo
   s.diagnostico.ultimoPayload = {
     em: Date.now(),
     gameState: s.gameState,
-    matchId: s.matchId,
+    matchId: s.matchId ?? (matchIdPartida || null),
     accountId: s.accountId,
     hero: s.hero,
     host: String(meta.host ?? ''),

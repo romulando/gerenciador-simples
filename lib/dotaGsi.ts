@@ -9,6 +9,16 @@ export const GSI_ARQUIVO = 'gamestate_integration_acompanhamento.cfg';
 const CFG_REL = path.join('steamapps', 'common', 'dota 2 beta', 'game', 'dota', 'cfg');
 const GSI_SUB = 'gamestate_integration';
 
+// Identificação da instalação real do Dota 2. Uma pasta com "game\dota\cfg"
+// pode ser só sobra de outra biblioteca do Steam (foi o que fazia o GSI ser
+// gravado no Dota errado); o appmanifest e o executável confirmam o jogo.
+const DOTA_DIR_REL = path.join('steamapps', 'common', 'dota 2 beta');
+const DOTA_MANIFESTO_REL = path.join('steamapps', 'appmanifest_570.acf');
+const DOTA_EXECUTAVEIS_REL = [
+  path.join(DOTA_DIR_REL, 'game', 'bin', 'win64', 'dota2.exe'),
+  path.join(DOTA_DIR_REL, 'game', 'bin', 'win32', 'dota2.exe'),
+];
+
 // Locais comuns de instalação do Steam (fornecidos pelo usuário).
 const STEAM_COMUNS = [
   'C:\\Program Files (x86)\\Steam',
@@ -34,6 +44,11 @@ export interface DotaLocalizacao {
   arquivoPath: string | null;
   arquivoInstalado: boolean;
   caminhosTestados: string[];
+  // Pastas com estrutura de Dota 2 (game\dota\cfg), mas sem o jogo instalado.
+  // São sobras de outra biblioteca do Steam e nunca recebem o GSI.
+  pastasIgnoradas: string[];
+  // Como a instalação real foi confirmada.
+  detectadoPor: 'appmanifest' | 'executavel' | null;
 }
 
 export interface ResultadoInstalacao {
@@ -153,31 +168,73 @@ export function localizarDota(): DotaLocalizacao {
 // Força uma nova varredura (usado após instalar).
 function detectarDota(): DotaLocalizacao {
   const testados: string[] = [];
+  const pastasIgnoradas: string[] = [];
+  const candidatos: {
+    steamPath: string;
+    cfgDir: string;
+    detectadoPor: 'appmanifest' | 'executavel';
+  }[] = [];
+
   for (const base of reunirBases()) {
     const cfgDir = path.join(base, CFG_REL);
     testados.push(cfgDir);
-    if (existe(cfgDir)) {
-      const gsiDir = path.join(cfgDir, GSI_SUB);
-      const arquivoPath = path.join(gsiDir, GSI_ARQUIVO);
-      return {
-        encontrado: true,
-        steamPath: base,
-        cfgDir,
-        gsiDir,
-        arquivoPath,
-        arquivoInstalado: existe(arquivoPath),
-        caminhosTestados: testados,
-      };
+
+    const temManifesto = existe(path.join(base, DOTA_MANIFESTO_REL));
+    const temExecutavel = DOTA_EXECUTAVEIS_REL.some((rel) =>
+      existe(path.join(base, rel))
+    );
+
+    // Pasta com a estrutura do Dota, mas sem o jogo instalado: é sobra de
+    // outra biblioteca. Instalar o GSI aqui faz o Dota real nunca receber os
+    // dados, então a pasta é apenas registrada no diagnóstico.
+    if (!temManifesto && !temExecutavel) {
+      if (existe(cfgDir)) pastasIgnoradas.push(cfgDir);
+      continue;
     }
+
+    candidatos.push({
+      steamPath: base,
+      cfgDir,
+      // O appmanifest é a fonte oficial do Steam. O executável cobre
+      // instalações em que o manifesto não está disponível.
+      detectadoPor: temManifesto ? 'appmanifest' : 'executavel',
+    });
   }
+
+  candidatos.sort((a, b) => {
+    if (a.detectadoPor === b.detectadoPor) return 0;
+    return a.detectadoPor === 'appmanifest' ? -1 : 1;
+  });
+
+  const escolhido = candidatos[0];
+  if (!escolhido) {
+    return {
+      encontrado: false,
+      steamPath: null,
+      cfgDir: null,
+      gsiDir: null,
+      arquivoPath: null,
+      arquivoInstalado: false,
+      caminhosTestados: testados,
+      pastasIgnoradas,
+      detectadoPor: null,
+    };
+  }
+
+  // A pasta cfg pode não existir ainda (jogo recém-instalado e nunca aberto);
+  // instalarGsi cria o diretório antes de gravar o arquivo.
+  const gsiDir = path.join(escolhido.cfgDir, GSI_SUB);
+  const arquivoPath = path.join(gsiDir, GSI_ARQUIVO);
   return {
-    encontrado: false,
-    steamPath: null,
-    cfgDir: null,
-    gsiDir: null,
-    arquivoPath: null,
-    arquivoInstalado: false,
+    encontrado: true,
+    steamPath: escolhido.steamPath,
+    cfgDir: escolhido.cfgDir,
+    gsiDir,
+    arquivoPath,
+    arquivoInstalado: existe(arquivoPath),
     caminhosTestados: testados,
+    pastasIgnoradas,
+    detectadoPor: escolhido.detectadoPor,
   };
 }
 
@@ -324,10 +381,14 @@ export function verificarGsiInstalado(
 export function instalarGsi(conteudo: string): ResultadoInstalacao {
   const localizacao = localizarDota();
   if (!localizacao.encontrado || !localizacao.gsiDir || !localizacao.arquivoPath) {
+    const ignoradas = localizacao.pastasIgnoradas.length
+      ? ` Pastas ignoradas (sem o jogo instalado): ${localizacao.pastasIgnoradas.join('; ')}.`
+      : '';
     return {
       ok: false,
       error:
-        'Pasta do Dota 2 não encontrada automaticamente. Use "Copiar arquivo" ou "Baixar .cfg" e cole manualmente.',
+        `Instalação do Dota 2 não encontrada automaticamente.${ignoradas} ` +
+        'Use "Copiar .cfg" e cole na pasta do Dota que você abre (a que tem dota2.exe).',
       localizacao,
     };
   }

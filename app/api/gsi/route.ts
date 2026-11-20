@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import {
   getGsiToken,
   processarGsi,
+  registrarFalhaProcessamentoGsi,
   registrarPayloadInvalido,
   type PayloadGsi,
 } from '@/lib/gsi';
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
   try {
     processarGsi(data, meta);
   } catch (e) {
-    console.error('[GSI] Erro ao processar payload:', e);
+    registrarFalhaProcessamentoGsi(e);
   }
 
   return new Response('OK', { status: 200, headers: { 'Content-Type': 'text/plain' } });
