@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Unplug, Wallet } from 'lucide-react';
 import Alerta from '@/components/ui/Alerta';
+import ToggleSwitch from '@/components/ui/ToggleSwitch';
 import { enviarJson, btnSecondary, inputCls, labelCls, buscarJson } from '@/components/pedidos/common';
 import type { LivepixStatusOverlay } from './common';
 
@@ -11,7 +12,17 @@ type RespostaLivepix = LivepixStatusOverlay & { mensagem?: string };
 
 // Seção da Configuração da Overlay: credenciais do app da LivePix (client
 // credentials) para a barra de progresso das doações do mês.
-export default function LivePixConfig() {
+export default function LivePixConfig({
+  barraAtiva,
+  barraMeta,
+  onBarraAtivaChange,
+  onBarraMetaChange,
+}: {
+  barraAtiva: boolean;
+  barraMeta: string;
+  onBarraAtivaChange: (valor: boolean) => void;
+  onBarraMetaChange: (valor: string) => void;
+}) {
   const [status, setStatus] = useState<LivepixStatusOverlay | null>(null);
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -106,15 +117,37 @@ export default function LivePixConfig() {
         </span>
       </div>
 
+      <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <ToggleSwitch
+          compact
+          checked={barraAtiva}
+          onChange={onBarraAtivaChange}
+          label="Mostrar barra do LivePix"
+          badge={barraAtiva ? 'ativa' : 'inativo'}
+          title="Exibe a barra de progresso das doações do LivePix, alternando com o contador de subs"
+        />
+        <div className="flex items-center gap-1.5 sm:pl-1" title="0 = sem meta">
+          <span className="text-[11px] text-gray-400">Meta R$</span>
+          <input
+            id="overlay-livepix-meta"
+            inputMode="decimal"
+            value={barraMeta}
+            onChange={(e) => onBarraMetaChange(e.target.value.replace(/[^\d.,]/g, '').slice(0, 10))}
+            placeholder="0"
+            aria-label="Meta da barra do LivePix em reais"
+            className="h-8 w-20 rounded-lg border border-[#e8a020]/40 bg-white/5 text-center text-sm font-semibold text-white transition-all duration-300 placeholder:font-normal placeholder:text-gray-600 focus:border-[#e8a020]/70 focus:bg-white/10 focus:outline-none"
+          />
+        </div>
+      </div>
+
       <p className="mb-3 text-[11px] leading-relaxed text-gray-500">
-        Crie uma aplicação nas configurações da sua conta na LivePix e cole o Client ID e o Client
-        Secret. A conexão usa client credentials com os escopos{' '}
+        Crie uma aplicação em LivePix → API e informe as credenciais. Escopos:{' '}
         <span className="font-mono text-gray-400">account:read</span>,{' '}
         <span className="font-mono text-gray-400">payments:read</span> e{' '}
         <span className="font-mono text-gray-400">messages:read</span> — sem URL de redirect.
       </p>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         <div>
           <label className={labelCls} htmlFor="livepix-client-id">
             Client ID

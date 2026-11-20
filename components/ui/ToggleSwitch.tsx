@@ -12,6 +12,7 @@ export default function ToggleSwitch({
   badge,
   title,
   disabled,
+  compact = false,
 }: {
   checked: boolean;
   onChange: (valor: boolean) => void;
@@ -20,6 +21,7 @@ export default function ToggleSwitch({
   badge?: string;
   title?: string;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   return (
     <button
@@ -30,7 +32,9 @@ export default function ToggleSwitch({
       title={title ?? label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`group flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 disabled:opacity-50 ${
+      className={`group flex w-full items-center text-left transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 disabled:opacity-50 ${
+        compact ? 'gap-2 rounded-lg border px-2 py-1.5' : 'gap-3 rounded-xl border px-3 py-2.5'
+      } ${
         checked
           ? 'border-[#e8a020]/70 bg-[#e8a020]/10'
           : 'border-white/10 bg-white/[0.03] hover:bg-white/10'
@@ -43,28 +47,32 @@ export default function ToggleSwitch({
       )}
 
       <span
-        className={`min-w-0 flex-1 truncate text-sm font-medium transition-colors ${
-          checked ? 'text-white' : 'text-gray-300 group-hover:text-white'
-        }`}
+        className={`min-w-0 flex-1 truncate font-medium transition-colors ${
+          compact ? 'text-xs' : 'text-sm'
+        } ${checked ? 'text-white' : 'text-gray-300 group-hover:text-white'}`}
       >
         {label}
       </span>
 
       {badge && (
-        <span className="shrink-0 rounded-md border border-[#e8a020]/50 bg-[#e8a020]/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#e8a020]">
+        <span
+          className={`shrink-0 rounded-md border border-[#e8a020]/50 bg-[#e8a020]/15 font-semibold uppercase tracking-wide text-[#e8a020] ${
+            compact ? 'px-1.5 py-0 text-[9px]' : 'px-2 py-0.5 text-[10px]'
+          }`}
+        >
           {badge}
         </span>
       )}
 
       <span
-        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 ${
-          checked ? 'border-[#e8a020] bg-[#e8a020]' : 'border-white/15 bg-white/15'
-        }`}
+        className={`relative inline-flex shrink-0 rounded-full border transition-colors duration-200 ${
+          compact ? 'h-5 w-9' : 'h-6 w-11'
+        } ${checked ? 'border-[#e8a020] bg-[#e8a020]' : 'border-white/15 bg-white/15'}`}
       >
         <span
-          className={`absolute left-[2px] top-[2px] h-[18px] w-[18px] rounded-full bg-white shadow transition-transform duration-200 ${
-            checked ? 'translate-x-[20px]' : 'translate-x-0'
-          }`}
+          className={`absolute left-[2px] top-[2px] rounded-full bg-white shadow transition-transform duration-200 ${
+            compact ? 'h-4 w-4' : 'h-[18px] w-[18px]'
+          } ${checked ? (compact ? 'translate-x-4' : 'translate-x-[20px]') : 'translate-x-0'}`}
         />
       </span>
     </button>

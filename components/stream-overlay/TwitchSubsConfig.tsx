@@ -5,12 +5,23 @@ import Link from 'next/link';
 import { BookOpen, Check, Link2, PlugZap, Unplug } from 'lucide-react';
 import { copiarTexto } from '@/lib/clipboard';
 import Alerta from '@/components/ui/Alerta';
+import ToggleSwitch from '@/components/ui/ToggleSwitch';
 import { buscarJson, btnSecondary, enviarJson, inputCls, labelCls } from '@/components/pedidos/common';
 import type { TwitchStatusOverlay } from './common';
 
 // Seção da Configuração da Overlay: credenciais do app da Twitch e conexão do
 // canal (OAuth) para o contador de subs.
-export default function TwitchSubsConfig() {
+export default function TwitchSubsConfig({
+  subAtivo,
+  subMeta,
+  onSubAtivoChange,
+  onSubMetaChange,
+}: {
+  subAtivo: boolean;
+  subMeta: string;
+  onSubAtivoChange: (valor: boolean) => void;
+  onSubMetaChange: (valor: string) => void;
+}) {
   const [status, setStatus] = useState<TwitchStatusOverlay | null>(null);
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -135,14 +146,38 @@ export default function TwitchSubsConfig() {
         </span>
       </div>
 
+      <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <ToggleSwitch
+          compact
+          checked={subAtivo}
+          onChange={onSubAtivoChange}
+          label="Mostrar contador de subs"
+          badge={subAtivo ? 'ativo' : 'inativo'}
+          title="Exibe o card do contador de subs da Twitch na overlay"
+        />
+        <div className="flex items-center gap-1.5 sm:pl-1" title="0 = sem barra de progresso">
+          <span className="text-[11px] text-gray-400">Meta</span>
+          <input
+            id="overlay-sub-meta"
+            inputMode="numeric"
+            value={subMeta}
+            onChange={(e) => onSubMetaChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="0"
+            aria-label="Meta de subs"
+            className="h-8 w-16 rounded-lg border border-[#e8a020]/40 bg-white/5 text-center text-sm font-semibold text-white transition-all duration-300 placeholder:font-normal placeholder:text-gray-600 focus:border-[#e8a020]/70 focus:bg-white/10 focus:outline-none"
+          />
+          <span className="text-[11px] text-gray-400">subs</span>
+        </div>
+      </div>
+
       <p className="mb-3 text-[11px] leading-relaxed text-gray-500">
         Crie um app em{' '}
-        <span className="font-mono text-gray-400">dev.twitch.tv/console/apps</span>, adicione a
-        URL de redirect abaixo e cole o Client ID e o Client Secret. Depois conecte com a conta
-        do canal (o canal precisa ser afiliado/parceiro para liberar os subs).
+        <span className="font-mono text-gray-400">dev.twitch.tv/console/apps</span>, cadastre a
+        URL de redirect abaixo e informe as credenciais. O canal precisa ser afiliado/parceiro
+        para liberar os subs.
       </p>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         <div>
           <label className={labelCls} htmlFor="twitch-client-id">
             Client ID

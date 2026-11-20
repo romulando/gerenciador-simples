@@ -6,7 +6,7 @@ import { copiarTexto } from '@/lib/clipboard';
 import Modal from '@/components/Modal';
 import Alerta from '@/components/ui/Alerta';
 import ToggleSwitch from '@/components/ui/ToggleSwitch';
-import { btnPrimary, btnSecondary, labelCls } from '@/components/pedidos/common';
+import { btnPrimary, btnSecondary } from '@/components/pedidos/common';
 import {
   LIVEPIX_META_MAX,
   OVERLAY_SUB_META_MAX,
@@ -108,102 +108,53 @@ export default function ConfigOverlayModal({
 
   return (
     <Modal titulo="Configuração da Overlay" largura="max-w-2xl" onClose={onFechar}>
-      <form onSubmit={submeter} className="space-y-5">
+      <form onSubmit={submeter} className="space-y-4">
         <div>
-          <label className={labelCls} htmlFor="overlay-limite-wins">
-            Modo de contagem de Wins: banco local
-          </label>
-          <p className="mb-3 text-xs leading-relaxed text-gray-400">
-            A contagem de vitórias/derrotas usa as partidas salvas no banco local (GSI/manual) da
-            conta logada no Dota 2; sem conta detectada, usa a conta do pedido em exibição.
-            Escolha quantas partidas recentes devem ser contadas:
-          </p>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-300">Últimas</span>
-            <input
-              id="overlay-limite-wins"
-              autoFocus
-              inputMode="numeric"
-              value={limite}
-              onChange={(e) => setLimite(e.target.value.replace(/\D/g, '').slice(0, 3))}
-              className="h-12 w-24 rounded-xl border border-[#e8a020]/40 bg-white/5 text-center text-2xl font-semibold tracking-tight text-white transition-all duration-300 focus:border-[#e8a020]/70 focus:bg-white/10 focus:outline-none"
-            />
-            <span className="text-sm text-gray-300">partidas</span>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <ToggleSwitch
-            checked={boost}
-            onChange={setBoost}
-            label="Modo Boost"
-            badge={boost ? 'ativo' : 'inativo'}
-            title="Mostra a linha com a medalha inicial → final e os MMRs na overlay"
-          />
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <ToggleSwitch
-            checked={subs}
-            onChange={setSubs}
-            label="Mostrar contador de subs"
-            badge={subs ? 'ativo' : 'inativo'}
-            title="Exibe o card do contador de subs da Twitch na overlay"
-          />
-          <div className="mt-3">
-            <label className={labelCls} htmlFor="overlay-sub-meta">
-              Meta de subs (0 = sem barra de progresso)
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <label className="block text-xs font-medium text-gray-400" htmlFor="overlay-limite-wins">
+              Modo de contagem de Wins: banco local
             </label>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-gray-400">Últimas</span>
               <input
-                id="overlay-sub-meta"
+                id="overlay-limite-wins"
+                autoFocus
                 inputMode="numeric"
-                value={meta}
-                onChange={(e) => setMeta(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="ex.: 100"
-                className="h-12 w-28 rounded-xl border border-[#e8a020]/40 bg-white/5 text-center text-2xl font-semibold tracking-tight text-white transition-all duration-300 placeholder:text-base placeholder:font-normal placeholder:text-gray-600 focus:border-[#e8a020]/70 focus:bg-white/10 focus:outline-none"
+                value={limite}
+                onChange={(e) => setLimite(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                className="h-9 w-16 rounded-lg border border-[#e8a020]/40 bg-white/5 text-center text-sm font-semibold text-white transition-all duration-300 focus:border-[#e8a020]/70 focus:bg-white/10 focus:outline-none"
               />
-              <span className="text-sm text-gray-300">subs</span>
+              <span className="text-[11px] text-gray-400">partidas</span>
             </div>
           </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+            Usa as partidas salvas no banco local (GSI/manual) da conta logada no Dota 2; sem
+            conta detectada, usa a conta do pedido em exibição.
+          </p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <ToggleSwitch
-            checked={barraPix}
-            onChange={setBarraPix}
-            label="Mostrar barra do LivePix"
-            badge={barraPix ? 'ativa' : 'inativo'}
-            title="Exibe a barra de progresso das doações do LivePix, alternando com o contador de subs"
-          />
-          <div className="mt-3">
-            <label className={labelCls} htmlFor="overlay-livepix-meta">
-              Meta da barra em R$ (0 = sem meta)
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                id="overlay-livepix-meta"
-                inputMode="decimal"
-                value={metaPix}
-                onChange={(e) =>
-                  setMetaPix(e.target.value.replace(/[^\d.,]/g, '').slice(0, 10))
-                }
-                placeholder="ex.: 500"
-                className="h-12 w-32 rounded-xl border border-[#e8a020]/40 bg-white/5 text-center text-2xl font-semibold tracking-tight text-white transition-all duration-300 placeholder:text-base placeholder:font-normal placeholder:text-gray-600 focus:border-[#e8a020]/70 focus:bg-white/10 focus:outline-none"
-              />
-              <span className="text-sm text-gray-300">reais</span>
-            </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
-              O total do mês vem da API do LivePix (credenciais abaixo). A barra divide o card com
-              o contador de subs (alternando ou os dois juntos, conforme o Editar Overlay) e usa a
-              cor configurada lá; o estilo (Clássica ou Vidro) também é escolhido no editor.
-            </p>
-          </div>
-        </div>
+        <ToggleSwitch
+          compact
+          checked={boost}
+          onChange={setBoost}
+          label="Modo Boost"
+          badge={boost ? 'ativo' : 'inativo'}
+          title="Mostra a linha com a medalha inicial → final e os MMRs na overlay"
+        />
 
-        <TwitchSubsConfig />
+        <TwitchSubsConfig
+          subAtivo={subs}
+          subMeta={meta}
+          onSubAtivoChange={setSubs}
+          onSubMetaChange={setMeta}
+        />
 
-        <LivePixConfig />
+        <LivePixConfig
+          barraAtiva={barraPix}
+          barraMeta={metaPix}
+          onBarraAtivaChange={setBarraPix}
+          onBarraMetaChange={setMetaPix}
+        />
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-gray-300">
@@ -234,7 +185,7 @@ export default function ConfigOverlayModal({
 
         {erro && <Alerta tipo="erro">{erro}</Alerta>}
 
-        <div className="flex justify-end gap-2 border-t border-white/10 pt-4">
+        <div className="flex justify-end gap-2 border-t border-white/10 pt-3">
           <button type="button" className={btnSecondary} onClick={onFechar}>
             Cancelar
           </button>
