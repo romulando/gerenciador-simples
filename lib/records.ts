@@ -225,10 +225,32 @@ export async function editarRegistro(
   if (!atual) throw new Error('Registro não encontrado.');
 
   const patch: Record<string, unknown> = { origem: 'theone' };
-  if (dados.data !== undefined) patch.data = normalizarDataRegistro(dados.data);
+  if (dados.data !== undefined) {
+    const novaData = normalizarDataRegistro(dados.data);
+    // O formulário tem precisão de minutos; se o usuário não mudou o horário,
+    // preserva os segundos originais para não reordenar o histórico.
+    const mesmoMinuto =
+      novaData.slice(0, 16) === chaveDataHora(atual.data).slice(0, 16);
+    if (!mesmoMinuto) {
+      patch.data = novaData;
+      patch.ordem = ordemDaData(novaData);
+    }
+  }
   if (atual.tipo === 'mmr') {
-    if (dados.mmr_inicial !== undefined) patch.mmr_inicial = Number(dados.mmr_inicial);
-    if (dados.mmr_final !== undefined) patch.mmr_final = Number(dados.mmr_final);
+    // Aceita tanto snake_case (banco) quanto camelCase (formulário).
+    const mmrInicial = dados.mmr_inicial ?? dados.mmrInicial;
+    const mmrFinal = dados.mmr_final ?? dados.mmrFinal;
+    for (const [campo, valor] of [
+      ['mmr_inicial', mmrInicial],
+      ['mmr_final', mmrFinal],
+    ] as const) {
+      if (valor === undefined) continue;
+      const n = Number(valor);
+      if (valor === '' || !Number.isInteger(n) || n < 0) {
+        throw new Error('Informe um MMR válido (inteiro maior ou igual a zero).');
+      }
+      patch[campo] = n;
+    }
     if (dados.motivo_ajuste !== undefined) patch.motivo_ajuste = dados.motivo_ajuste || null;
   } else {
     if (dados.quantidade !== undefined) patch.quantidade = Number(dados.quantidade);
@@ -245,7 +267,6 @@ export async function editarRegistro(
       patch[campo] = Number.isFinite(n as number) ? n : null;
     }
   }
-  if (dados.data !== undefined) patch.ordem = ordemDaData(dados.data);
 
   const registro = await atualizarRegistro(registroId, patch);
   await registrarLog(pedidoId, atual.tipo, `Registro editado (${atual.tipo})`, {

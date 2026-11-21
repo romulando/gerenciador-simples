@@ -58,7 +58,23 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (!registroId) return NextResponse.json({ error: 'Registro inválido.' }, { status: 400 });
 
   try {
-    const registro = await editarRegistro(pedidoId, registroId, b);
+    // O formulário envia camelCase; o banco usa snake_case.
+    const dados: Record<string, unknown> = {
+      data: b.data,
+      quantidade: b.quantidade,
+      medalha: b.medalha,
+      observacoes: b.observacoes,
+      hero: b.hero,
+      resultado: b.resultado,
+      kills: b.kills,
+      deaths: b.deaths,
+      assists: b.assists,
+    };
+    if (b.mmrInicial !== undefined) dados.mmr_inicial = b.mmrInicial;
+    if (b.mmrFinal !== undefined) dados.mmr_final = b.mmrFinal;
+    if (b.motivo_ajuste !== undefined) dados.motivo_ajuste = b.motivo_ajuste;
+
+    const registro = await editarRegistro(pedidoId, registroId, dados);
     const resultado = await tentarRecalcular(pedidoId);
     return NextResponse.json({ ok: true, registro, ...resultado });
   } catch (e) {
